@@ -231,7 +231,7 @@ p {
   min-width: 0;
 }
 .document-shell {
-  --document-header-height: 56px;
+  --document-header-height: 48px;
   background: #fff;
   display: flex;
   flex-direction: column;
@@ -256,14 +256,33 @@ p {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 24px;
 }
 .document-heading strong {
+  min-width: 0;
   font-size: 12px;
   font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #36473b;
+  overflow-wrap: anywhere;
+  color: #7a877c;
+}
+.format-toolbar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+}
+.format-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  padding: 0;
+  border-radius: 4px;
+  color: #5f6e61;
+}
+.format-toolbar button:hover:not(:disabled) {
+  background: #f0f3ed;
 }
 .header-menu {
   position: relative;
@@ -487,6 +506,9 @@ p {
 }
 .ProseMirror > * {
   scroll-margin-top: calc(var(--document-header-height) + 16px);
+}
+.ProseMirror > :first-child {
+  margin-top: 0;
 }
 .ProseMirror h1 {
   font-family: "DM Serif Display", Georgia, serif;
@@ -1130,23 +1152,35 @@ p {
     display: flex;
     position: fixed;
     left: 12px;
-    top: 14px;
+    top: 10px;
     z-index: 25;
   }
   .document-header {
     padding-left: 46px;
-    padding-right: 10px;
-    gap: 8px;
-  }
-  .document-heading {
-    flex: 1;
+    padding-right: 8px;
     gap: 6px;
   }
-  .document-heading strong {
-    font-size: 11px;
+  .document-heading {
+    gap: 6px;
   }
-  .agent-control > span {
+  .format-toolbar {
+    gap: 0;
+  }
+  .format-toolbar button {
+    width: 24px;
+  }
+  .agent-control > span,
+  .share-control > span,
+  .presence-count > span {
     display: none;
+  }
+  .header-link,
+  .header-menu summary {
+    min-height: 32px;
+    padding: 5px;
+  }
+  .presence {
+    padding-right: 4px;
   }
   .header-actions {
     gap: 1px;
@@ -1164,7 +1198,7 @@ p {
     display: none;
   }
   .writing-area {
-    padding: 12px 12px 30px;
+    padding: 20px 12px 30px;
   }
   .paper {
     padding: 0 8px;

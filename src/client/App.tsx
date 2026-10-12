@@ -428,27 +428,41 @@ function Document({
   return (
     <div className="document-shell">
       <header className="document-header">
-        <div className="document-heading">
-          <strong title={state.document?.title}>
-            {state.document?.title ?? "Opening document…"}
-          </strong>
-          <div
-            className="save-state"
-            title={state.status}
-            aria-label={state.status}
+        {source ? (
+          <button
+            className="header-link"
+            aria-label="Copy Markdown"
+            title="Copy Markdown"
+            onClick={() => void navigator.clipboard.writeText(markdown)}
           >
-            <span
-              className={`status-dot ${state.pending ? "pending" : ""} ${state.paused ? "paused" : ""}`}
-            />
-            {!navigator.onLine && <WifiOff size={13} />}
-            <span className={state.status === "Saved" ? "visually-hidden" : ""}>
-              {state.status}
-            </span>
-            {state.document?.role === "viewer" && (
-              <span className="role-pill">View only</span>
-            )}
+            <Copy size={14} />
+            Copy
+          </button>
+        ) : (
+          <div className="format-toolbar" role="group" aria-label="Formatting">
+            {(
+              [
+                { action: "bold", icon: Bold, label: "Bold · ⌘ B" },
+                { action: "italic", icon: Italic, label: "Italic · ⌘ I" },
+                { action: "heading", icon: Heading2, label: "Heading" },
+                { action: "list", icon: List, label: "Bullet list" },
+                { action: "undo", icon: Undo2, label: "Undo · ⌘ Z" },
+                { action: "redo", icon: Redo2, label: "Redo · ⌘ ⇧ Z" },
+              ] as const
+            ).map(({ action, icon: Icon, label }) => (
+              <button
+                key={action}
+                title={label}
+                aria-label={label}
+                disabled={readOnly || !editor}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => format(editor, action as Format)}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
           </div>
-        </div>
+        )}
         <div className="header-actions">
           {people.length > 0 && (
             <div
@@ -476,51 +490,19 @@ function Document({
                 ))}
               </span>
               <span className="presence-count" aria-hidden="true">
-                {people.length + 1} here
+                {people.length + 1}
+                <span> here</span>
               </span>
             </div>
           )}
-          {source ? (
-            <button
-              className="header-link"
-              aria-label="Copy Markdown"
-              title="Copy Markdown"
-              onClick={() => void navigator.clipboard.writeText(markdown)}
-            >
-              Copy
-            </button>
-          ) : (
-            <HeaderMenu
-              label="Formatting options"
-              trigger="Format"
-              className="format-menu"
-            >
-              {(
-                [
-                  { action: "bold", icon: Bold, label: "Bold · ⌘ B" },
-                  { action: "italic", icon: Italic, label: "Italic · ⌘ I" },
-                  { action: "heading", icon: Heading2, label: "Heading" },
-                  { action: "list", icon: List, label: "Bullet list" },
-                  { action: "undo", icon: Undo2, label: "Undo · ⌘ Z" },
-                  { action: "redo", icon: Redo2, label: "Redo · ⌘ ⇧ Z" },
-                ] as const
-              ).map(({ action, icon: Icon, label }) => (
-                <button
-                  key={action}
-                  title={label}
-                  aria-label={label}
-                  disabled={readOnly || !editor}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => format(editor, action as Format)}
-                >
-                  <Icon size={14} />
-                  {label.split(" · ")[0]}
-                </button>
-              ))}
-            </HeaderMenu>
-          )}
-          <button className="header-link" onClick={() => setModal("share")}>
-            Share
+          <button
+            className="header-link share-control"
+            aria-label="Share"
+            title="Share document"
+            onClick={() => setModal("share")}
+          >
+            <Share2 size={15} />
+            <span>Share</span>
           </button>
           <button
             className="header-link agent-control"
@@ -599,6 +581,27 @@ function Document({
       )}
       <div className="writing-area">
         <div className="paper">
+          <div className="document-heading">
+            <strong>{state.document?.title ?? "Opening document…"}</strong>
+            <div
+              className="save-state"
+              title={state.status}
+              aria-label={state.status}
+            >
+              <span
+                className={`status-dot ${state.pending ? "pending" : ""} ${state.paused ? "paused" : ""}`}
+              />
+              {!navigator.onLine && <WifiOff size={13} />}
+              <span
+                className={state.status === "Saved" ? "visually-hidden" : ""}
+              >
+                {state.status}
+              </span>
+              {state.document?.role === "viewer" && (
+                <span className="role-pill">View only</span>
+              )}
+            </div>
+          </div>
           {state.ready ? (
             <>
               {source ? (
