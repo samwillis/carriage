@@ -37,7 +37,7 @@ export async function sealDocument(id: string, identity: Identity) {
     parameters,
   );
   const presence = rawSql(
-    `SELECT t.session_id,t.user_id,t.label,t.kind,t.activity,t.expires_at FROM document_presence t JOIN document_members m ON ${predicate} WHERE t.document_id=$1`,
+    `SELECT t.session_id,t.user_id,t.label,t.kind,t.activity,t.expires_at,t.cursor,t.cursor_version FROM document_presence t JOIN document_members m ON ${predicate} WHERE t.document_id=$1`,
     parameters,
   );
   const [snapshotQuery, updateQuery, metadataQuery, presenceQuery] =

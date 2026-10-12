@@ -2,6 +2,7 @@ import * as Y from "yjs";
 import { createRealtimeClient } from "@neon/realtime/client";
 import { api, post, ApiError, type Session } from "./api";
 import { LocalJournal } from "./journal";
+import { PresenceAwareness } from "./presence";
 import { decodeBase64, encodeBase64, renderDocument } from "../shared/codec";
 import {
   SCHEMA_VERSION,
@@ -24,6 +25,7 @@ export class DocumentProvider {
   doc = new Y.Doc();
   journal: LocalJournal;
   sessionId = crypto.randomUUID();
+  presence: PresenceAwareness;
   state: SyncState = {
     ready: false,
     status: "Connecting",
@@ -43,6 +45,11 @@ export class DocumentProvider {
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private editedAt = 0;
   private serverOffset = 0;
+  private presenceTimer: ReturnType<typeof setTimeout> | undefined;
+  private presenceSending = false;
+  private presenceAgain = false;
+  private presenceLastSent = 0;
+  private presenceSequence = 0;
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
     return () => {
@@ -52,6 +59,8 @@ export class DocumentProvider {
   getSnapshot = () => this.state;
   private publish(patch: Partial<SyncState>) {
     if (this.closed) return;
+    if (patch.presence)
+      this.presence.sync(patch.presence, Date.now() + this.serverOffset);
     this.state = { ...this.state, ...patch };
     for (const fn of this.listeners) fn();
   }
@@ -59,6 +68,13 @@ export class DocumentProvider {
     public id: string,
     public session: Session,
   ) {
+    this.presence = new PresenceAwareness(
+      this.doc,
+      this.sessionId,
+      session.userId,
+      session.name,
+    );
+    this.presence.awareness.on("change", this.awarenessChanged);
     this.journal = new LocalJournal(
       `${session.userId}:${id}:${SCHEMA_VERSION}`,
     );
@@ -99,7 +115,7 @@ export class DocumentProvider {
     });
   }
   private pause(error: string) {
-    this.publish({ paused: true, error, status: "Paused" });
+    this.publish({ paused: true, error, status: "Paused", presence: [] });
     this.client?.close();
   }
   async start() {
@@ -143,6 +159,7 @@ export class DocumentProvider {
     }
   }
   private online = () => {
+    void this.heartbeat();
     void this.flush();
   };
   private offline = () => this.publish({ status: "Offline" });
@@ -462,9 +479,37 @@ export class DocumentProvider {
       if (retry && !this.closed) this.scheduleFlush();
     }
   }
+  private awarenessChanged = (change: {
+    added: number[];
+    updated: number[];
+    removed: number[];
+  }) => {
+    if (
+      [...change.added, ...change.updated, ...change.removed].includes(
+        this.doc.clientID,
+      )
+    )
+      this.schedulePresence();
+  };
+  private schedulePresence() {
+    if (this.closed || this.state.paused || this.presenceTimer) return;
+    this.presenceTimer = setTimeout(
+      () => {
+        this.presenceTimer = undefined;
+        void this.heartbeat();
+      },
+      Math.max(0, 250 - (Date.now() - this.presenceLastSent)),
+    );
+  }
   private async heartbeat() {
     if (this.closed || this.state.paused || !this.hydrated || !navigator.onLine)
       return;
+    if (this.presenceSending) {
+      this.presenceAgain = true;
+      return;
+    }
+    this.presenceSending = true;
+    this.presenceLastSent = Date.now();
     try {
       const result = await api(
         `/api/documents/${this.id}/presence`,
@@ -472,11 +517,19 @@ export class DocumentProvider {
         post({
           session_id: this.sessionId,
           activity: Date.now() - this.editedAt < 10_000 ? "Editing" : "Viewing",
+          cursor: this.presence.cursor(),
+          sequence: ++this.presenceSequence,
         }),
       );
       this.serverOffset = result.server_time - Date.now();
     } catch {
       /* Next heartbeat retries. */
+    } finally {
+      this.presenceSending = false;
+      if (this.presenceAgain) {
+        this.presenceAgain = false;
+        this.schedulePresence();
+      }
     }
   }
   close() {
@@ -484,6 +537,9 @@ export class DocumentProvider {
     this.client?.close();
     clearInterval(this.timer);
     clearTimeout(this.retryTimer);
+    clearTimeout(this.presenceTimer);
+    this.presence.awareness.off("change", this.awarenessChanged);
+    this.presence.destroy();
     for (const fn of this.cleanups) fn();
     window.removeEventListener("online", this.online);
     window.removeEventListener("offline", this.offline);

@@ -13,7 +13,7 @@ import {
   type Identity,
 } from "./identity";
 import { AppError, fail } from "./errors";
-import { documentId, requestId } from "../shared/contracts";
+import { documentId, requestId, presenceInput } from "../shared/contracts";
 import { sealDocument } from "./live";
 import {
   oauth,
@@ -271,16 +271,19 @@ app.post("/api/documents/:id/presence", async (c) => {
   const id = documentId.parse(c.req.param("id"));
   const identity = c.get("identity");
   await documents.authorize(pool, id, identity);
-  const args = z
-    .object({
-      session_id: z.string().uuid(),
-      activity: z.enum(["Viewing", "Editing", "Idle"]),
-    })
-    .parse(await c.req.json());
+  const args = presenceInput.parse(await c.req.json());
   await pool.query(
-    `INSERT INTO document_presence(document_id,session_id,user_id,label,kind,activity,expires_at) VALUES($1,$2,$3,$4,'person',$5,clock_timestamp()+interval '45 seconds')
-    ON CONFLICT(document_id,session_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,expires_at=excluded.expires_at WHERE document_presence.user_id=excluded.user_id`,
-    [id, args.session_id, identity.userId, identity.name, args.activity],
+    `INSERT INTO document_presence(document_id,session_id,user_id,label,kind,activity,expires_at,cursor,cursor_version) VALUES($1,$2,$3,$4,'person',$5,clock_timestamp()+interval '45 seconds',$6,COALESCE($7::bigint,1))
+    ON CONFLICT(document_id,session_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,expires_at=excluded.expires_at,cursor=excluded.cursor,cursor_version=CASE WHEN $7::bigint IS NULL THEN document_presence.cursor_version+1 ELSE excluded.cursor_version END WHERE document_presence.user_id=excluded.user_id AND ($7::bigint IS NULL OR document_presence.cursor_version<excluded.cursor_version)`,
+    [
+      id,
+      args.session_id,
+      identity.userId,
+      identity.name,
+      args.activity,
+      args.cursor ? JSON.stringify(args.cursor) : null,
+      args.sequence ?? null,
+    ],
   );
   await pool.query(
     "DELETE FROM document_presence WHERE document_id=$1 AND expires_at<clock_timestamp()",

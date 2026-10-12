@@ -9,6 +9,32 @@ export const LIMITS = {
 };
 export const requestId = z.string().uuid();
 export const documentId = z.string().uuid();
+const positionId = z.object({
+  client: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  clock: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+});
+const relativePosition = z
+  .object({
+    type: positionId.nullable().optional(),
+    tname: z.literal("prosemirror").nullable().optional(),
+    item: positionId.nullable().optional(),
+    assoc: z.number().int().min(-1).max(1).optional(),
+  })
+  .refine(
+    (position) => Boolean(position.type || position.tname),
+    "Position needs a shared type.",
+  );
+export const cursorSelection = z.object({
+  anchor: relativePosition,
+  head: relativePosition,
+});
+export const presenceInput = z.object({
+  session_id: z.string().uuid(),
+  activity: z.enum(["Viewing", "Editing", "Idle"]),
+  cursor: cursorSelection.nullable().default(null),
+  sequence: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+});
+export type CursorSelection = z.infer<typeof cursorSelection>;
 export const editOperation = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("replace_text"),
@@ -86,6 +112,8 @@ export interface Presence {
   kind: "person" | "agent";
   activity: string;
   expires_at: Date | string;
+  cursor: CursorSelection | null;
+  cursor_version: string | number;
 }
 export interface Block {
   ref: string;

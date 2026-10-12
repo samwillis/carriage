@@ -17,6 +17,7 @@ import { $prose, callCommand } from "@milkdown/kit/utils";
 import { keymap } from "@milkdown/kit/prose/keymap";
 import {
   ySyncPlugin,
+  yCursorPlugin,
   yUndoPlugin,
   undoCommand,
   redoCommand,
@@ -57,6 +58,7 @@ export function WritingEditor({
         $prose(() => ySyncPlugin(provider.doc.getXmlFragment("prosemirror"))),
       )
       .use($prose(() => yUndoPlugin()))
+      .use($prose(() => yCursorPlugin(provider.presence.awareness)))
       .use(
         $prose(() =>
           keymap({
