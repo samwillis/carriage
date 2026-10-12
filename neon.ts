@@ -12,7 +12,7 @@ export default defineConfig({
   },
   functions: {
     margin: {
-      name: "Margin collaborative Markdown API and MCP",
+      name: "Carriage collaborative Markdown API and MCP",
       source: "src/server/index.ts",
       env: {
         APP_ORIGIN: process.env.APP_ORIGIN!,

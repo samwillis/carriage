@@ -12,8 +12,8 @@ try {
       expiresAt: Date.now() + 60_000,
       scopes: ["read", "edit", "write"],
     },
-    "Welcome to Margin",
-    "# Welcome to Margin\n\nWrite together with people and agents.\n\n## Try it\n\n- Open this page in two browser windows\n- Invite a collaborator\n- Connect an agent with read, edit, and write tools\n",
+    "Welcome to Carriage",
+    "# Welcome to Carriage\n\nWrite together with people and agents.\n\n## Try it\n\n- Open this page in two browser windows\n- Invite a collaborator\n- Connect an agent with read, edit, and write tools\n",
   );
   console.log(`Created document ${result.id}.`);
 } finally {

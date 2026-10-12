@@ -230,7 +230,7 @@ Exit: demonstrate two people editing, an agent making a targeted change, compact
 
 ## Implementation decisions and validation
 
-- The demo is named Margin. A single Neon Function hosts the built frontend, API, MCP, and OAuth endpoints. Infrastructure is in Sam’s staging organization: PG18, `aws-us-east-2`, project `frosty-hat-96438417`, branch `br-frosty-poetry-w25lx1wr`.
+- The demo is named Carriage. A single Neon Function hosts the built frontend, API, MCP, and OAuth endpoints. Infrastructure is in Sam’s staging organization: PG18, `aws-us-east-2`, project `frosty-hat-96438417`, branch `br-frosty-poetry-w25lx1wr`.
 - Preview SDK/CLI packages are pinned to `5e276fdb4114555eac89f6033b15e6ff5e9e7eb4`. Milkdown 7.22.2 and y-prosemirror 1.3.7 supply the browser and headless schema. Collaboration uses Yjs sync/undo plugins directly because this Milkdown kit has no packaged collaboration plugin.
 - Live SQL uses four separate unordered ACL queries; all four are accepted by staging Realtime. Bootstrap generation checks prevent a reset during hydration from marking an older response current.
 - Text operations require the whole target block’s hash as well as selected text. This guards formatting and context with a stronger precondition than the proposed sentence-only guard. Concurrent changes to another block retry; changes in the same block return a conflict. A mixed-format replacement must be split or use a block replacement.

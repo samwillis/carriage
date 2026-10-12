@@ -36,7 +36,8 @@ button {
   color: inherit;
 }
 button:focus-visible,
-a:focus-visible {
+a:focus-visible,
+.header-menu summary:focus-visible {
   outline: 2px solid #58a980;
   outline-offset: 3px;
 }
@@ -230,11 +231,7 @@ p {
   min-width: 0;
 }
 .document-shell {
-  --document-heading-height: 68px;
-  --document-tools-height: 44px;
-  --document-header-height: calc(
-    var(--document-heading-height) + var(--document-tools-height) + 1px
-  );
+  --document-header-height: 56px;
   background: #fff;
   display: flex;
   flex-direction: column;
@@ -245,47 +242,51 @@ p {
   top: 0;
   z-index: 15;
   flex-shrink: 0;
+  height: var(--document-header-height);
   border-bottom: 1px solid var(--line);
   background: #fff;
-}
-.header-main {
-  height: var(--document-heading-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 34px;
+  padding: 0 24px;
   gap: 20px;
 }
 .document-heading {
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 7px;
+  align-items: center;
+  gap: 10px;
 }
 .document-heading strong {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #36473b;
 }
-.document-menu {
+.header-menu {
   position: relative;
   flex-shrink: 0;
 }
-.document-menu summary {
+.header-menu summary {
   list-style: none;
   cursor: pointer;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 7px;
+  font-size: 11px;
+  color: #5f6e61;
 }
-.document-menu summary::-webkit-details-marker {
+.header-menu summary::-webkit-details-marker {
   display: none;
 }
-.document-menu summary:hover {
+.header-menu summary:hover {
   background: #f0f3ed;
 }
-.document-menu > div {
+.header-menu > div {
   position: absolute;
   right: 0;
   top: calc(100% + 10px);
@@ -297,7 +298,7 @@ p {
   border-radius: 6px;
   box-shadow: 0 6px 24px #18282112;
 }
-.document-menu button {
+.header-menu button {
   width: 100%;
   display: flex;
   align-items: center;
@@ -308,13 +309,41 @@ p {
   font-size: 12px;
   color: #465147;
 }
-.document-menu button:hover {
+.header-menu button:hover {
   background: #f0f3ed;
 }
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.header-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #5f6e61;
+}
+.header-link:hover {
+  background: #f0f3ed;
+}
+.agent-control {
+  color: var(--green);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .presence {
   display: flex;
@@ -393,6 +422,8 @@ p {
   background: #f0f4ec;
 }
 .save-state {
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 10px;
   display: flex;
   align-items: center;
@@ -441,29 +472,6 @@ p {
   justify-content: center;
   color: #97a58d;
   padding: 5px;
-}
-.editor-tools {
-  height: var(--document-tools-height);
-  display: flex;
-  align-items: center;
-  padding: 0 34px;
-}
-.format-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-.format-toolbar button {
-  padding: 5px 7px;
-  display: flex;
-  border-radius: 4px;
-  color: #7d8f71;
-}
-.format-toolbar button:hover {
-  background: #edf2e7;
-}
-.format-toolbar button:nth-child(5) {
-  margin-left: 9px;
 }
 .editor-root {
   min-height: 450px;
@@ -634,20 +642,6 @@ p {
 }
 .source-view {
   min-height: 450px;
-}
-.source-tools {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  color: #97a48c;
-  font-size: 11px;
-}
-.source-tools button {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  font-size: 10px;
-  letter-spacing: 0;
 }
 .source-view pre {
   font:
@@ -1077,10 +1071,6 @@ p {
     padding-left: 38px;
     padding-right: 38px;
   }
-  .header-main,
-  .editor-tools {
-    padding: 0 24px;
-  }
   .inspector {
     width: 205px;
     padding: 17px;
@@ -1140,34 +1130,26 @@ p {
     display: flex;
     position: fixed;
     left: 12px;
-    top: 20px;
+    top: 14px;
     z-index: 25;
   }
-  .header-main {
-    padding-left: 47px;
-    padding-right: 15px;
+  .document-header {
+    padding-left: 46px;
+    padding-right: 10px;
     gap: 8px;
-  }
-  .editor-tools {
-    padding: 0 17px;
   }
   .document-heading {
     flex: 1;
+    gap: 6px;
   }
   .document-heading strong {
     font-size: 11px;
   }
+  .agent-control > span {
+    display: none;
+  }
   .header-actions {
-    gap: 5px;
-    flex-shrink: 0;
-  }
-  .header-actions .primary.small {
-    padding: 8px;
-    font-size: 0;
-    gap: 0;
-  }
-  .header-actions .primary.small svg {
-    width: 17px;
+    gap: 1px;
   }
   .secondary {
     padding: 8px;

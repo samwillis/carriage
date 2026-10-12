@@ -23,7 +23,7 @@ export async function handleMcp(request: Request) {
     );
   }
   const server = new McpServer(
-    { name: "margin", version: "0.1.0" },
+    { name: "carriage", version: "0.1.0" },
     {
       instructions:
         "Read the document outline, then selected blocks. Use replace_text for small changes and retain the supplied refs and hashes. Reuse request_id after transport failures. Full writes require an unchanged revision. Tools return committed database revisions.",

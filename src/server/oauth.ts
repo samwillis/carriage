@@ -98,7 +98,7 @@ export const oauthOptions: OAuthOptions<string[]> = {
   },
 };
 export const oauth = betterAuth({
-  appName: "Margin agent connections",
+  appName: "Carriage agent connections",
   baseURL: `${apiBase}/api/oauth`,
   basePath: "/api/oauth",
   secret: oauthSecret,

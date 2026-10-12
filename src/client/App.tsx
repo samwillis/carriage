@@ -31,7 +31,7 @@ import { DocumentProvider } from "./provider";
 import { WritingEditor, format, type Format } from "./editor";
 import { renderDocument } from "../shared/codec";
 import type { DocumentInfo } from "../shared/contracts";
-const welcome = `# Getting started\n\n- Open this document in another window to try live editing.\n- Use Share to invite someone.\n- Use Connect agent to let an agent read or edit this document.\n\nStart writing here.\n`;
+const welcome = `# Getting started\n\n- Open this document in another window to try live editing.\n- Use Share to invite someone.\n- Use Agent to let an agent read or edit this document.\n\nStart writing here.\n`;
 export function App() {
   const [session, setSession] = useState<Session | null>(null),
     [loaded, setLoaded] = useState(false),
@@ -96,7 +96,7 @@ export function App() {
     <div className={`workspace ${sidebar ? "sidebar-open" : ""}`}>
       <aside className="sidebar">
         <a className="wordmark" href="/">
-          margin
+          carriage
           <span className="brand-dot" />
         </a>
         <button className="new-document" onClick={() => setDialog(true)}>
@@ -262,7 +262,7 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
     <div className="login-page">
       <div className="login-story">
         <a href="/" className="wordmark">
-          margin
+          carriage
           <span className="brand-dot" />
         </a>
         <div>
@@ -352,7 +352,7 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
           </form>
           {!local && (
             <p className="auth-switch">
-              {register ? "Already have an account?" : "New to Margin?"}{" "}
+              {register ? "Already have an account?" : "New to Carriage?"}{" "}
               <button onClick={() => setRegister(!register)}>
                 {register ? "Sign in" : "Create an account"}
               </button>
@@ -428,125 +428,73 @@ function Document({
   return (
     <div className="document-shell">
       <header className="document-header">
-        <div className="header-main">
-          <div className="document-heading">
-            <strong>{state.document?.title ?? "Opening document…"}</strong>
-            <div className="save-state">
-              <span
-                className={`status-dot ${state.pending ? "pending" : ""} ${state.paused ? "paused" : ""}`}
-              />
-              {!navigator.onLine && <WifiOff size={13} />} {state.status}
-              {state.document?.role === "viewer" && (
-                <span className="role-pill">View only</span>
-              )}
-            </div>
-          </div>
-          <div className="header-actions">
-            {people.length > 0 && (
-              <div
-                className="presence"
-                role="group"
-                aria-label={`${people.length + 1} connected ${people.length ? "sessions" : "session"}, including you`}
-                title={[
-                  `${session.name} · you`,
-                  ...people.map(presenceLabel),
-                ].join("\n")}
-              >
-                <span className="presence-avatars">
-                  {people.slice(0, 3).map((p) => (
-                    <span
-                      className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
-                      key={p.session_id}
-                      title={presenceLabel(p)}
-                    >
-                      {p.kind === "agent" ? (
-                        <Bot size={14} />
-                      ) : (
-                        p.label.slice(0, 1)
-                      )}
-                    </span>
-                  ))}
-                  <span className="avatar self" title={`${session.name} · you`}>
-                    {session.name.slice(0, 1)}
-                  </span>
-                </span>
-                <span className="presence-count" aria-hidden="true">
-                  {people.length + 1} here
-                </span>
-              </div>
+        <div className="document-heading">
+          <strong title={state.document?.title}>
+            {state.document?.title ?? "Opening document…"}
+          </strong>
+          <div
+            className="save-state"
+            title={state.status}
+            aria-label={state.status}
+          >
+            <span
+              className={`status-dot ${state.pending ? "pending" : ""} ${state.paused ? "paused" : ""}`}
+            />
+            {!navigator.onLine && <WifiOff size={13} />}
+            <span className={state.status === "Saved" ? "visually-hidden" : ""}>
+              {state.status}
+            </span>
+            {state.document?.role === "viewer" && (
+              <span className="role-pill">View only</span>
             )}
-            <button className="secondary" onClick={() => setModal("share")}>
-              <Share2 size={15} />
-              Share
-            </button>
-            <button className="primary small" onClick={() => setModal("agent")}>
-              <Bot size={15} />
-              Connect agent
-            </button>
-            <details
-              className="document-menu"
-              onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget))
-                  e.currentTarget.open = false;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.currentTarget.open = false;
-                  e.currentTarget.querySelector("summary")?.focus();
-                }
-              }}
-            >
-              <summary
-                className="icon-button"
-                aria-label="Document actions"
-                title="Document actions"
-              >
-                <MoreHorizontal size={20} />
-              </summary>
-              <div
-                onClick={(e) => {
-                  if ((e.target as HTMLElement).closest("button"))
-                    e.currentTarget.closest("details")!.open = false;
-                }}
-              >
-                <button
-                  disabled={readOnly}
-                  onClick={() => {
-                    setTitle(state.document?.title ?? "");
-                    setRename(true);
-                  }}
-                >
-                  Rename document
-                </button>
-                <button onClick={() => setSource(!source)}>
-                  <Code2 size={15} />
-                  {source ? "Back to editor" : "Markdown source"}
-                </button>
-                <button onClick={download}>
-                  <Download size={15} />
-                  Export Markdown
-                </button>
-                <button onClick={() => setInspector(!inspector)}>
-                  <Activity size={15} />
-                  {inspector ? "Hide sync details" : "Show live sync details"}
-                </button>
-              </div>
-            </details>
           </div>
         </div>
-        <div className="editor-tools">
-          {source ? (
-            <div className="source-tools">
-              <span>Markdown source</span>
-              <button
-                onClick={() => void navigator.clipboard.writeText(markdown)}
-              >
-                <Copy size={13} />
-                Copy
-              </button>
+        <div className="header-actions">
+          {people.length > 0 && (
+            <div
+              className="presence"
+              role="group"
+              aria-label={`${people.length + 1} connected sessions, including you`}
+              title={[
+                `${session.name} · you`,
+                ...people.map(presenceLabel),
+              ].join("\n")}
+            >
+              <span className="presence-avatars">
+                {people.slice(0, 3).map((p) => (
+                  <span
+                    className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
+                    key={p.session_id}
+                    title={presenceLabel(p)}
+                  >
+                    {p.kind === "agent" ? (
+                      <Bot size={14} />
+                    ) : (
+                      p.label.slice(0, 1)
+                    )}
+                  </span>
+                ))}
+              </span>
+              <span className="presence-count" aria-hidden="true">
+                {people.length + 1} here
+              </span>
             </div>
+          )}
+          {source ? (
+            <button
+              className="header-link"
+              aria-label="Copy Markdown"
+              title="Copy Markdown"
+              onClick={() => void navigator.clipboard.writeText(markdown)}
+            >
+              Copy
+            </button>
           ) : (
-            <div className="format-toolbar">
+            <HeaderMenu
+              label="Formatting options"
+              trigger="Format"
+              className="format-menu"
+            >
               {(
                 [
                   { action: "bold", icon: Bold, label: "Bold · ⌘ B" },
@@ -561,15 +509,54 @@ function Document({
                   key={action}
                   title={label}
                   aria-label={label}
-                  disabled={readOnly}
+                  disabled={readOnly || !editor}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => format(editor, action as Format)}
                 >
-                  <Icon size={17} />
+                  <Icon size={14} />
+                  {label.split(" · ")[0]}
                 </button>
               ))}
-            </div>
+            </HeaderMenu>
           )}
+          <button className="header-link" onClick={() => setModal("share")}>
+            Share
+          </button>
+          <button
+            className="header-link agent-control"
+            aria-label="Connect agent"
+            title="Connect agent"
+            onClick={() => setModal("agent")}
+          >
+            <Bot size={15} />
+            <span>Agent</span>
+          </button>
+          <HeaderMenu
+            label="Document actions"
+            trigger={<MoreHorizontal size={18} />}
+          >
+            <button
+              disabled={readOnly}
+              onClick={() => {
+                setTitle(state.document?.title ?? "");
+                setRename(true);
+              }}
+            >
+              Rename document
+            </button>
+            <button onClick={() => setSource(!source)}>
+              <Code2 size={15} />
+              {source ? "Back to editor" : "Markdown source"}
+            </button>
+            <button onClick={download}>
+              <Download size={15} />
+              Export Markdown
+            </button>
+            <button onClick={() => setInspector(!inspector)}>
+              <Activity size={15} />
+              {inspector ? "Hide sync details" : "Show live sync details"}
+            </button>
+          </HeaderMenu>
         </div>
       </header>
       {(state.error || message) && (
@@ -594,7 +581,7 @@ function Document({
                   );
                   const link = document.createElement("a");
                   link.href = url;
-                  link.download = `margin-recovery-${id}.json`;
+                  link.download = `carriage-recovery-${id}.json`;
                   link.click();
                   URL.revokeObjectURL(url);
                 })
@@ -728,6 +715,45 @@ function Document({
         </Modal>
       )}
     </div>
+  );
+}
+function HeaderMenu({
+  label,
+  trigger,
+  className = "",
+  children,
+}: {
+  label: string;
+  trigger: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      className={`header-menu ${className}`}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget))
+          e.currentTarget.open = false;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.currentTarget.open = false;
+          e.currentTarget.querySelector("summary")?.focus();
+        }
+      }}
+    >
+      <summary aria-label={label} title={label}>
+        {trigger}
+      </summary>
+      <div
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("button"))
+            e.currentTarget.closest("details")!.open = false;
+        }}
+      >
+        {children}
+      </div>
+    </details>
   );
 }
 function Modal({
@@ -1030,7 +1056,7 @@ function AgentDialog({
                 value={JSON.stringify(
                   {
                     mcpServers: {
-                      margin: {
+                      carriage: {
                         url: connection.mcp_url,
                         headers: {
                           Authorization: `Bearer ${connection.token}`,
@@ -1099,7 +1125,7 @@ function OAuthConnect({
   return (
     <div className="oauth-page">
       <a className="wordmark" href="/">
-        margin
+        carriage
         <span className="brand-dot" />
       </a>
       <section className="modal">
