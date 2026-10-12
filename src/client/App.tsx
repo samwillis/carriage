@@ -926,13 +926,14 @@ function ShareDialog({
     </Modal>
   );
 }
-function CopyBox({ value }: { value: string }) {
+function CopyBox({ value, label = "Copy" }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="copy-box">
       <code>{value}</code>
       <button
-        aria-label="Copy"
+        aria-label={label}
+        title={label}
         onClick={() =>
           void navigator.clipboard.writeText(value).then(() => {
             setCopied(true);
@@ -942,6 +943,131 @@ function CopyBox({ value }: { value: string }) {
       >
         {copied ? <Check size={16} /> : <Copy size={16} />}
       </button>
+    </div>
+  );
+}
+const hostedAgentGuides = {
+  chatgpt: {
+    name: "ChatGPT",
+    steps: [
+      "On ChatGPT web, open Plugins → + → Add custom MCP server. Name it Carriage and paste the MCP URL below.",
+      "Choose OAuth authentication. If asked how to register the client, choose dynamic registration (DCR). Leave the client ID and secret blank.",
+      "Create the plugin, sign in to Carriage, choose this document, and approve access. Install the plugin if prompted.",
+      "In a new chat, type @ and select Carriage. Paste the example prompt below and approve the edit when ChatGPT asks.",
+    ],
+    note: "Custom MCP access depends on your account and workspace permissions. Some versions call these Apps or Connectors.",
+    url: "https://developers.openai.com/api/docs/guides/custom-mcp-server",
+  },
+  claude: {
+    name: "Claude",
+    steps: [
+      "Open Customize → Connectors → + Add → Add custom connector. Name it Carriage and paste the MCP URL below.",
+      "Choose Sign in now. If an OAuth client option is shown, choose Register automatically.",
+      "Sign in to Carriage, choose this document, and approve access. Finish adding the connector.",
+      "In a chat, open + → Connectors and enable Carriage. Paste the example prompt below and approve edits when asked.",
+    ],
+    note: "Custom connectors depend on your plan. A workspace owner may need to add the connector first.",
+    url: "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+  },
+  other: {
+    name: "Other MCP clients",
+    steps: [
+      "Add a remote MCP server named Carriage using the URL below and Streamable HTTP transport.",
+      "Choose OAuth with automatic client registration. Sign in to Carriage, choose this document, and approve access.",
+      "Enable the server’s tools in your conversation, then paste the example prompt below.",
+    ],
+    note: "If your client accepts a bearer token instead, choose An access token under Connection method.",
+    url: null,
+  },
+};
+type LocalAgentClient = "cursor" | "claude-code" | "codex" | "other";
+function LocalAgentSetup({
+  client,
+  connection,
+}: {
+  client: LocalAgentClient;
+  connection: { mcp_url: string; token: string };
+}) {
+  const { mcp_url: url, token } = connection;
+  const config = JSON.stringify(
+    {
+      mcpServers: {
+        carriage: { url, headers: { Authorization: `Bearer ${token}` } },
+      },
+    },
+    null,
+    2,
+  );
+  return (
+    <div className="agent-guide">
+      {client === "cursor" ? (
+        <>
+          <p>
+            Merge this into your personal <code>~/.cursor/mcp.json</code>,
+            keeping any existing servers. Enable Carriage in Cursor’s MCP
+            settings, then open an Agent chat.
+          </p>
+          <CopyBox value={config} label="Copy Cursor configuration" />
+          <a
+            href="https://cursor.com/docs/context/mcp"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Cursor setup guide <ArrowUpRight size={12} />
+          </a>
+        </>
+      ) : client === "claude-code" ? (
+        <>
+          <p>
+            Run this in your terminal to add a personal connection. Start a new
+            Claude Code session and use <code>/mcp</code> to check that Carriage
+            is connected.
+          </p>
+          <CopyBox
+            value={`claude mcp add --transport http --scope user carriage '${url}' --header 'Authorization: Bearer ${token}'`}
+            label="Copy Claude Code command"
+          />
+          <a
+            href="https://code.claude.com/docs/en/mcp"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Claude Code setup guide <ArrowUpRight size={12} />
+          </a>
+        </>
+      ) : client === "codex" ? (
+        <>
+          <p>
+            Add this entry to your personal <code>~/.codex/config.toml</code>,
+            keeping any existing servers. Restart Codex to load it; in the CLI,
+            use <code>/mcp</code> to check the connection.
+          </p>
+          <CopyBox
+            value={`[mcp_servers.carriage]\nurl = ${JSON.stringify(url)}\nhttp_headers = { Authorization = ${JSON.stringify(`Bearer ${token}`)} }`}
+            label="Copy Codex configuration"
+          />
+          <a
+            href="https://developers.openai.com/codex/mcp/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Codex setup guide <ArrowUpRight size={12} />
+          </a>
+        </>
+      ) : (
+        <>
+          <p>
+            Add a Streamable HTTP server with this URL and Authorization header.
+            The JSON below works in clients that use <code>mcpServers</code>;
+            check your client’s configuration format.
+          </p>
+          <CopyBox value={config} label="Copy MCP configuration" />
+        </>
+      )}
+      <p className="hint">
+        This configuration contains your document token. Keep it private and out
+        of Git. It expires in 7 days; create a new connection to replace it.
+      </p>
     </div>
   );
 }
@@ -956,7 +1082,10 @@ function AgentDialog({
   readOnly: boolean;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState("hosted"),
+  const [client, setClient] = useState<"chatgpt" | "claude" | LocalAgentClient>(
+      "chatgpt",
+    ),
+    [otherMethod, setOtherMethod] = useState("oauth"),
     [config, setConfig] = useState<any>(null),
     [grants, setGrants] = useState<any[]>([]),
     [label, setLabel] = useState("My agent"),
@@ -966,44 +1095,85 @@ function AgentDialog({
   const refresh = async () =>
     setGrants(await api(`/api/documents/${id}/grants`, session));
   useEffect(() => {
-    void api("/api/config").then(setConfig);
-    void refresh();
+    void api("/api/config")
+      .then(setConfig)
+      .catch((e) => setError(e.message));
+    void refresh().catch((e) => setError(e.message));
   }, []);
+  const useToken =
+    client !== "chatgpt" &&
+    client !== "claude" &&
+    (client !== "other" || otherMethod === "token");
+  const hostedGuide =
+    hostedAgentGuides[
+      client === "chatgpt" || client === "claude" ? client : "other"
+    ];
+  const examplePrompt =
+    readOnly || (useToken && !connection?.scopes.includes("edit"))
+      ? `Use Carriage to read document ${id}. Start with its outline, then read the relevant blocks and summarize the document. Do not make edits.`
+      : `Use Carriage to read document ${id}. Start with its outline, then read the opening paragraph. Tighten that paragraph using edit_document, preserving the rest of the document. Tell me what you changed.`;
   return (
     <Modal
       title="Connect agent"
       subtitle="Give an agent access to this document."
       onClose={onClose}
     >
-      <div className="tabs">
-        <button
-          className={tab === "hosted" ? "active" : ""}
-          onClick={() => setTab("hosted")}
+      <label className="field">
+        Your app
+        <select
+          aria-label="Your app"
+          value={client}
+          onChange={(e) => setClient(e.target.value as typeof client)}
         >
-          Hosted agent
-        </button>
-        <button
-          className={tab === "cli" ? "active" : ""}
-          onClick={() => setTab("cli")}
-        >
-          CLI / local agent
-        </button>
-      </div>
-      {tab === "hosted" ? (
+          <option value="chatgpt">ChatGPT</option>
+          <option value="claude">Claude</option>
+          <option value="cursor">Cursor</option>
+          <option value="claude-code">Claude Code</option>
+          <option value="codex">Codex</option>
+          <option value="other">Other MCP clients</option>
+        </select>
+      </label>
+      {client === "other" && (
+        <label className="field">
+          Connection method
+          <select
+            aria-label="Connection method"
+            value={otherMethod}
+            onChange={(e) => setOtherMethod(e.target.value)}
+          >
+            <option value="oauth">Browser sign-in (OAuth)</option>
+            <option value="token">An access token</option>
+          </select>
+        </label>
+      )}
+      {!useToken ? (
         <>
-          <p className="dialog-copy">
-            Add this URL to your agent’s MCP connectors. Sign in, choose a
-            document, and approve access.
-          </p>
-          <CopyBox value={config?.mcpUrl ?? "Loading…"} />
-          <span className="section-label">Document ID</span>
-          <CopyBox value={id} />
-          <small className="hint">
-            Access is limited to the document you choose.
-          </small>
+          <div className="agent-guide">
+            <ol>
+              {hostedGuide.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <span className="section-label">MCP URL</span>
+            {config ? (
+              <CopyBox value={config.mcpUrl} label="Copy MCP URL" />
+            ) : (
+              <p className="hint">Loading connection URL…</p>
+            )}
+            <p className="hint">{hostedGuide.note}</p>
+            {hostedGuide.url && (
+              <a href={hostedGuide.url} target="_blank" rel="noreferrer">
+                {hostedGuide.name} setup guide <ArrowUpRight size={12} />
+              </a>
+            )}
+          </div>
         </>
       ) : (
         <>
+          <p className="dialog-copy">
+            Choose what your agent can do, then create a connection. We’ll show
+            the configuration to copy into your app.
+          </p>
           <label className="field">
             Connection name
             <input
@@ -1055,30 +1225,34 @@ function AgentDialog({
               <p className="hint">
                 Copy this now. The token is shown once and expires in 7 days.
               </p>
-              <CopyBox
-                value={JSON.stringify(
-                  {
-                    mcpServers: {
-                      carriage: {
-                        url: connection.mcp_url,
-                        headers: {
-                          Authorization: `Bearer ${connection.token}`,
-                        },
-                      },
-                    },
-                  },
-                  null,
-                  2,
-                )}
+              <LocalAgentSetup
+                client={client as LocalAgentClient}
+                connection={connection}
               />
-              <span className="section-label">Document ID</span>
-              <CopyBox value={id} />
             </>
           )}
         </>
       )}
+      {(!useToken || connection) && (
+        <div className="agent-guide agent-example">
+          <h3>Try it</h3>
+          <p>
+            Paste this into your agent’s chat after connecting. It includes this
+            document’s ID.
+          </p>
+          <CopyBox value={examplePrompt} label="Copy example prompt" />
+          <p>
+            Keep the document open to watch edits appear. Access is limited to
+            the connected document and the approved permissions.
+          </p>
+        </div>
+      )}
       <div className="dialog-list">
         <span className="section-label">Connections</span>
+        <p className="hint">
+          Revoke a connection here to stop its access. Reconnect to work on
+          another document.
+        </p>
         {grants
           .filter((g) => !g.revoked_at)
           .map((g) => (

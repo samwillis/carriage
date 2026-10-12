@@ -934,23 +934,40 @@ p {
   padding: 2px;
   color: #8c9e7c;
 }
-.tabs {
-  display: flex;
-  border-bottom: 1px solid #e0e7d8;
-  margin: 27px 0 20px;
-  gap: 24px;
-}
-.tabs button {
-  font-size: 11px;
-  color: #9cab90;
-  padding: 0 0 11px;
-}
-.tabs button.active {
-  color: #4d713c;
-  border-bottom: 2px solid #6b9556;
-}
 .modal .dialog-copy {
   font-size: 12px;
+}
+.agent-guide {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #5f6e61;
+}
+.agent-guide ol {
+  padding-left: 20px;
+}
+.agent-guide li {
+  padding-left: 3px;
+  margin-bottom: 12px;
+}
+.agent-guide a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.agent-guide code {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.agent-example {
+  margin-top: 24px;
+}
+.agent-example h3 {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
 }
 .oauth-page {
   min-height: 100vh;

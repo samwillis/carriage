@@ -58,10 +58,12 @@ For a public deployment, set `APP_ORIGIN` and `API_BASE_URL` to the actual Funct
 
 ## Connect an agent
 
+Open a document and click **Agent** for setup instructions, client-specific configurations, and a copyable prompt. See the [agent guide](docs/AGENT_GUIDE.md) for ChatGPT, Claude, Cursor, Claude Code, Codex, permissions, and troubleshooting.
+
 The **Connect agent** panel supports both flows:
 
-- **CLI/local:** create a document-scoped bearer token, copy the displayed MCP configuration, and give the agent the document ID. Tokens are hashed in Postgres, expire after seven days by default, and can be revoked.
-- **Hosted:** add the public `/mcp` URL to a connector supporting OAuth authorization code, PKCE, and dynamic registration. The browser signs in through Neon Auth, selects a document, and approves scopes. A separate maintained Better Auth OAuth provider handles codes, refresh rotation, and client registration. Access tokens are bound to the MCP resource and to a live document grant.
+- **Document token:** create a document-scoped bearer token, copy the configuration for your client, and give the agent the example prompt containing the document ID. Tokens are hashed in Postgres, expire after seven days by default, and can be revoked.
+- **Sign in:** add the public `/mcp` URL to a connector supporting OAuth authorization code, PKCE, and dynamic registration. The browser signs in through Neon Auth, selects a document, and approves scopes. A separate maintained Better Auth OAuth provider handles codes, refresh rotation, and client registration. Access tokens are bound to the MCP resource and to a live document grant.
 
 Every new authorization request selects its document again, including a second client in the same browser. The approval binds the requesting client, PKCE challenge, state, scopes, and resource; agent access also checks the grant's client binding.
 
