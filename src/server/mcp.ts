@@ -89,7 +89,7 @@ export async function handleMcp(request: Request) {
     {
       title: "Find documents",
       description:
-        "List documents accessible to the connected account, optionally filter by title. Returns IDs, roles and revisions without document bodies. Pass next_cursor as after for the next page. A legacy document connection lists only its approved document.",
+        "List documents accessible to the connected account, optionally filter by title. Returns IDs, roles and revisions without document bodies. Pass next_cursor as after for the next page.",
       inputSchema: listInput.shape,
       annotations: { readOnlyHint: true },
     },

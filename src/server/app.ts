@@ -161,7 +161,7 @@ app.get("/oauth/consent", async (c) => {
   const {
     rows: [grant],
   } = await pool.query(
-    'SELECT g.*,d.title,c.name AS client_name FROM agent_grants g LEFT JOIN documents d ON d.id=g.document_id LEFT JOIN oauth_clients c ON c."clientId"=g.oauth_client_id WHERE g.id=$1 AND g.user_id=$2',
+    'SELECT g.*,c.name AS client_name FROM agent_grants g LEFT JOIN oauth_clients c ON c."clientId"=g.oauth_client_id WHERE g.id=$1 AND g.user_id=$2',
     [session.session.grantId, session.user.id],
   );
   const params = new URLSearchParams(query);
@@ -185,7 +185,7 @@ app.get("/oauth/consent", async (c) => {
         })[char]!,
     );
   return c.html(
-    `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect agent · Carriage</title><style>body{background:#eef1eb;color:#182821;font:16px system-ui;display:grid;place-items:center;min-height:90vh}main{max-width:420px;padding:40px;background:white;border-radius:20px}button{padding:12px 20px;border:0;border-radius:8px;background:#1f5341;color:white;margin-right:12px;cursor:pointer}p{line-height:1.6}small{overflow-wrap:anywhere}</style></head><body><main><h1>Connect agent</h1><p>Allow <strong>${text(grant.client_name ?? "this agent")}</strong> to access <strong>${text(grant.document_id ? grant.title : session.user.name + "’s documents")}</strong> with these permissions: ${text(grant.scopes.join(", "))}.</p><p>Existing document permissions still apply. You can revoke this connection from the Agent panel.</p><button id="accept">Allow connection</button><button id="deny">Decline</button><p id="error" role="alert"></p></main><script>const query=${JSON.stringify(query).replace(/</g, "\\u003c")};async function finish(accept){try{const r=await fetch('/api/oauth/oauth2/consent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accept,oauth_query:query})});const d=await r.json();if(!r.ok)throw new Error(d.message||d.error_description||'Connection failed');location.assign(d.redirect_uri||d.url);}catch(e){document.getElementById('error').textContent=e.message;}}document.getElementById('accept').onclick=()=>finish(true);document.getElementById('deny').onclick=()=>finish(false);</script></body></html>`,
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect agent · Carriage</title><style>body{background:#eef1eb;color:#182821;font:16px system-ui;display:grid;place-items:center;min-height:90vh}main{max-width:420px;padding:40px;background:white;border-radius:20px}button{padding:12px 20px;border:0;border-radius:8px;background:#1f5341;color:white;margin-right:12px;cursor:pointer}p{line-height:1.6}small{overflow-wrap:anywhere}</style></head><body><main><h1>Connect agent</h1><p>Allow <strong>${text(grant.client_name ?? "this agent")}</strong> to access <strong>${text(session.user.name + "’s documents")}</strong> with these permissions: ${text(grant.scopes.join(", "))}.</p><p>Existing document permissions still apply. You can revoke this connection from the Agent panel.</p><button id="accept">Allow connection</button><button id="deny">Decline</button><p id="error" role="alert"></p></main><script>const query=${JSON.stringify(query).replace(/</g, "\\u003c")};async function finish(accept){try{const r=await fetch('/api/oauth/oauth2/consent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accept,oauth_query:query})});const d=await r.json();if(!r.ok)throw new Error(d.message||d.error_description||'Connection failed');location.assign(d.redirect_uri||d.url);}catch(e){document.getElementById('error').textContent=e.message;}}document.getElementById('accept').onclick=()=>finish(true);document.getElementById('deny').onclick=()=>finish(false);</script></body></html>`,
   );
 });
 app.use("/api/*", async (c, next) => {
@@ -300,45 +300,10 @@ app.post("/api/documents/:id/presence", async (c) => {
   );
   return c.json({ ok: true, server_time: Date.now() });
 });
-app.get("/api/documents/:id/grants", async (c) => {
-  const id = documentId.parse(c.req.param("id"));
-  const identity = c.get("identity");
-  await documents.authorize(pool, id, identity);
-  const { rows } = await pool.query(
-    "SELECT id,label,scopes,expires_at,revoked_at,oauth_client_id FROM agent_grants WHERE document_id=$1 AND user_id=$2 ORDER BY created_at DESC",
-    [id, identity.userId],
-  );
-  return c.json(rows);
-});
-app.post("/api/documents/:id/grants", async (c) => {
-  const id = documentId.parse(c.req.param("id"));
-  const identity = c.get("identity");
-  const args = z
-    .object({
-      label: z.string().trim().min(1).max(80),
-      scopes: z.array(z.enum(["read", "edit", "write"])).min(1),
-      days: z.number().int().min(1).max(30).default(7),
-    })
-    .parse(await c.req.json());
-  const token = secretToken("margin");
-  const grant = await transaction(pool, async (client) => {
-    await client.query("SELECT id FROM documents WHERE id=$1 FOR UPDATE", [id]);
-    for (const scope of args.scopes)
-      await documents.authorize(client, id, identity, scope, true);
-    const {
-      rows: [grant],
-    } = await client.query(
-      `INSERT INTO agent_grants(document_id,user_id,label,token_hash,scopes,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+($6*interval '1 day')) RETURNING id,label,scopes,expires_at`,
-      [id, identity.userId, args.label, hash(token), args.scopes, args.days],
-    );
-    return grant;
-  });
-  return c.json({ ...grant, token, mcp_url: resource }, 201);
-});
 app.get("/api/grants", async (c) => {
   const { rows } = await pool.query(
-    `SELECT g.id,g.label,g.scopes,g.expires_at,g.revoked_at,g.oauth_client_id,g.document_id,d.title AS document_title
-     FROM agent_grants g LEFT JOIN documents d ON d.id=g.document_id WHERE g.user_id=$1 ORDER BY g.created_at DESC`,
+    `SELECT id,label,scopes,expires_at,revoked_at,oauth_client_id
+     FROM agent_grants WHERE user_id=$1 ORDER BY created_at DESC`,
     [c.get("identity").userId],
   );
   return c.json(rows);

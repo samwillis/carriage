@@ -1271,10 +1271,7 @@ function AgentDialog({
               <span>
                 {g.label}
                 <small>
-                  {g.document_id
-                    ? `Only ${g.document_title} · `
-                    : "All your documents · "}
-                  {g.scopes.join(" + ")} · expires{" "}
+                  All your documents · {g.scopes.join(" + ")} · expires{" "}
                   {new Date(g.expires_at).toLocaleDateString()}
                 </small>
               </span>

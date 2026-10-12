@@ -5,14 +5,16 @@ import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { testIdentity } from "./test-auth.mjs";
 const doc = JSON.parse(await readFile(".cache/test-document.json", "utf8")),
-  base = new URL(doc.url).origin,
+  base =
+    process.env.SMOKE_API_URL ??
+    "https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build",
   id = new URL(doc.url).searchParams.get("doc");
 const { token } = await testIdentity(base),
   headers = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-const grant = await fetch(`${base}/api/documents/${id}/grants`, {
+const grant = await fetch(`${base}/api/grants`, {
   method: "POST",
   headers,
   body: JSON.stringify({

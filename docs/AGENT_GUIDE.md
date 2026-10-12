@@ -128,7 +128,7 @@ Start with an outline, then read the relevant blocks. Prefer targeted edits for 
 ## Access and troubleshooting
 
 - New connections cover your account’s current and future documents, within the approved permissions. Shared viewer documents remain read-only. Removing your document membership removes the agent’s access too.
-- Existing document-scoped connections remain restricted to their original document. Revoke and reconnect to approve account-level access; their permissions are never expanded automatically.
+- Document-specific connections have been removed. Create an account connection if you previously used one.
 - Account tokens are shown once and expire after seven days. Keep token configurations private and out of Git. Create a new connection when a token expires.
 - Click **Revoke** beside a connection in the Agent connections panel to stop its access. Removing the plugin from a client alone does not revoke the Carriage grant.
 - If the agent only describes a proposed change, ask it to call Carriage’s `edit_document` tool and apply the change. Check that the client has enabled write tools and that the grant includes edit permission.

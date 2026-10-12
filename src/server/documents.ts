@@ -54,7 +54,7 @@ export class DocumentService {
       `INSERT INTO document_presence(document_id,session_id,user_id,label,kind,activity,cursor,cursor_version,updated_at,expires_at)
        SELECT $1,$2,$3,$4,'agent',$5,$6,1,clock_timestamp(),least(g.expires_at,$7::timestamptz,clock_timestamp()+interval '45 seconds')
        FROM document_members m JOIN agent_grants g ON g.id=$8 AND g.user_id=m.user_id
-       WHERE m.document_id=$1 AND m.user_id=$3 AND (g.document_id IS NULL OR g.document_id=$1)
+       WHERE m.document_id=$1 AND m.user_id=$3
          AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp() AND $7::timestamptz>clock_timestamp()
        ON CONFLICT(document_id,session_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,
          cursor=excluded.cursor,cursor_version=document_presence.cursor_version+1,updated_at=excluded.updated_at,expires_at=excluded.expires_at`,
@@ -127,12 +127,6 @@ export class DocumentService {
       fail(401, "credential_expired", "Your credential expired.");
     if (identity.kind === "agent") {
       const grant = await this.authorizeAgent(client, identity, scope, locked);
-      if (grant.document_id !== null && grant.document_id !== id)
-        fail(
-          403,
-          "grant_denied",
-          "This connection is limited to another document.",
-        );
       return {
         role: membership.role,
         principal: `grant:${grant.id}`,
@@ -178,20 +172,14 @@ export class DocumentService {
   }
   async discover(identity: Identity, input: unknown) {
     const args = listInput.parse(input);
-    const grant = await this.authorizeAgent(this.db, identity, "read");
+    await this.authorizeAgent(this.db, identity, "read");
     const { rows } = await this.db.query(
       `SELECT d.id,d.title,m.role,d.head AS revision,d.updated_at
        FROM documents d JOIN document_members m ON m.document_id=d.id
-       WHERE m.user_id=$1 AND ($2::uuid IS NULL OR d.id=$2)
-         AND ($3::uuid IS NULL OR d.id>$3) AND strpos(lower(d.title),lower($4))>0
-       ORDER BY d.id LIMIT $5`,
-      [
-        identity.userId,
-        grant.document_id,
-        args.after ?? null,
-        args.query,
-        args.limit + 1,
-      ],
+       WHERE m.user_id=$1 AND ($2::uuid IS NULL OR d.id>$2)
+         AND strpos(lower(d.title),lower($3))>0
+       ORDER BY d.id LIMIT $4`,
+      [identity.userId, args.after ?? null, args.query, args.limit + 1],
     );
     return {
       documents: rows.slice(0, args.limit),
@@ -241,18 +229,7 @@ export class DocumentService {
             "SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))",
             [identity.principal, requestId],
           );
-          const grant = await this.authorizeAgent(
-            client,
-            identity,
-            "create",
-            true,
-          );
-          if (grant.document_id !== null)
-            fail(
-              403,
-              "grant_denied",
-              "Document connections cannot create documents.",
-            );
+          await this.authorizeAgent(client, identity, "create", true);
           const {
             rows: [receipt],
           } = await client.query(

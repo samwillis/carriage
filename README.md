@@ -85,7 +85,17 @@ Use **Agent connections** in the sidebar to connect ChatGPT, Claude, Cursor, Cla
 - **Access token:** create an account connection, copy the configuration for your client, and approve read, edit, create or full-write permissions. Tokens are hashed in Postgres, expire after seven days by default, and can be revoked.
 - **Browser sign-in:** add the public `/mcp` URL to a connector supporting OAuth authorization code, PKCE and dynamic registration. Sign in through Neon Auth and approve access to the account’s documents. The maintained Better Auth OAuth provider handles codes, refresh rotation and registration. Access tokens bind the MCP resource, the requesting client and a live account grant.
 
-Every new OAuth authorization request requires approval for that client, including a second client in the same browser. Approvals bind the client, PKCE challenge, state, scopes and resource. Every document tool rechecks current membership and the grant’s scopes, expiry and revocation. Viewer documents stay read-only. New connections include accessible future documents; existing document-scoped grants keep their original restrictions until explicitly replaced.
+Every new OAuth authorization request requires approval for that client, including a second client in the same browser. Approvals bind the client, PKCE challenge, state, scopes and resource. Every document tool rechecks current membership and the grant’s scopes, expiry and revocation. Viewer documents stay read-only. Connections cover current and future accessible documents. Document-specific connections have been removed; their old credentials no longer work.
+
+For an existing deployment, migrate through `004` to remove document grants and their OAuth tokens, sessions, consents, pending codes, login tickets, and presence. This also prevents the old API from creating more document grants. Deploy the account-only backend, then apply `005` to drop the obsolete column and rebuild the account indexes. Migrations use a shared ledger and lock so already-applied schema changes are not replayed.
+
+```sh
+node --env-file=.cache/deploy.env --import tsx scripts/migrate.ts \
+  --through 004_remove_document_connections.sql
+node --env-file=.cache/deploy.env scripts/neon.mjs deploy --no-env-pull --update-existing
+node --env-file=.cache/deploy.env --import tsx scripts/migrate.ts
+vercel deploy --prod
+```
 
 Tools: `list_documents`, `create_document`, `read_document`, `edit_document`, and `write_document`. Discovery returns paginated metadata, with an optional title filter. Creation assigns ownership to the account and uses a durable receipt and transaction advisory lock so concurrent retries return the same document. New documents appear in the sidebar on its next refresh. Start with an outline, then read selected blocks. References use Yjs relative positions anchored inside live block elements. Targeted operations require the returned block hash; text replacements also require the selected text and occurrence. The hash guards formatting and context. Batches preflight every operation and reject overlaps atomically. Full replacements require an unchanged document revision. Reuse the request ID and exact input after a transport failure.
 

@@ -297,3 +297,33 @@ try {
   if (error.message === "Authorization code replay accepted") throw error;
   console.log("Authorization code replay rejected: passed");
 }
+// Retire this harness's connection after checking revocation. Its dynamic
+// client owns only this test flow; deleting it cascades its tokens and consents.
+const { Pool } = await import("pg");
+const cleanup = new Pool({ connectionString: process.env.DATABASE_URL });
+const connection = await cleanup.connect();
+try {
+  await connection.query("BEGIN");
+  await connection.query("DELETE FROM document_presence WHERE session_id=$1", [
+    `grant:${grant.id}`,
+  ]);
+  await connection.query('DELETE FROM oauth_sessions WHERE "grantId"=$1', [
+    grant.id,
+  ]);
+  await connection.query(
+    "DELETE FROM oauth_verifications WHERE CASE WHEN value IS JSON OBJECT THEN value::jsonb->>'referenceId' END=$1",
+    [grant.id],
+  );
+  await connection.query('DELETE FROM oauth_clients WHERE "clientId"=$1', [
+    registration.client_id,
+  ]);
+  await connection.query("DELETE FROM agent_grants WHERE id=$1", [grant.id]);
+  await connection.query("COMMIT");
+  console.log("OAuth smoke connection state removed.");
+} catch (error) {
+  await connection.query("ROLLBACK");
+  throw error;
+} finally {
+  connection.release();
+  await cleanup.end();
+}

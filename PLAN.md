@@ -152,7 +152,7 @@ Use Neon Auth for human login and verify its JWTs in Functions. Store document m
 
 Provide both agent connection paths:
 
-- CLI: the signed-in user approves a revocable account bearer grant with read/edit/write/create scopes. Intersect document operations with current membership on every request. Existing document-scoped grants retain their restriction until explicitly replaced.
+- CLI: the signed-in user approves a revocable account bearer grant with read/edit/write/create scopes. Intersect document operations with current membership on every request. All agent connections belong to an account.
 - Hosted MCP client: a maintained OAuth authorization-server implementation hosted on Functions uses Neon Auth in its login/consent interaction and issues resource-bound MCP credentials. Support the discovery/registration flow required by the chosen client, PKCE, token expiry/refresh, and revocation.
 
 Managed Neon Auth does not itself provide the full external-client MCP OAuth flow. Verify a maintained provider with a compatible Fetch adapter and custom login/consent integration. The gate must exercise login/consent across the frontend, Neon Auth, and Functions origins, followed by a real hosted-client tool call and refresh/revocation. A copied human session JWT is not the hosted client's MCP credential. Store both the agent/client and authorizing human in mutation audit records.

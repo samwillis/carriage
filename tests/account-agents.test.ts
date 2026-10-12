@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
-import { readFile, readdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
+import { applyAppMigrations } from "../scripts/app-migrations";
 import * as Y from "yjs";
 import { relativePositionToAbsolutePosition } from "y-prosemirror";
 import { DocumentService } from "../src/server/documents";
@@ -36,15 +36,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
       ids.push(doc.id);
       return doc;
     }
-    async function agent(
-      scopes = ["read", "edit", "write", "create"],
-      documentId: string | null = null,
-    ) {
+    async function agent(scopes = ["read", "edit", "write", "create"]) {
       const {
         rows: [grant],
       } = await db.query(
-        "INSERT INTO agent_grants(user_id,document_id,label,scopes,expires_at) VALUES($1,$2,'Test agent',$3,clock_timestamp()+interval '1 hour') RETURNING id",
-        [user.userId, documentId, scopes],
+        "INSERT INTO agent_grants(user_id,label,scopes,expires_at) VALUES($1,'Test agent',$2,clock_timestamp()+interval '1 hour') RETURNING id",
+        [user.userId, scopes],
       );
       grants.push(grant.id);
       return {
@@ -56,17 +53,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
       } as Identity;
     }
     beforeAll(async () => {
-      for (const file of (
-        await readdir(new URL("../migrations/", import.meta.url))
-      )
-        .filter((file) => file.endsWith(".sql"))
-        .sort())
-        await db.query(
-          await readFile(
-            new URL(`../migrations/${file}`, import.meta.url),
-            "utf8",
-          ),
-        );
+      await applyAppMigrations(db);
     });
     afterAll(async () => {
       await db.query("DELETE FROM documents WHERE id=ANY($1::uuid[])", [ids]);
@@ -186,22 +173,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
         code: "grant_denied",
       });
     });
-    it("keeps existing document connections restricted and enforces narrower token scopes", async () => {
-      const first = await create(),
-        second = await create(),
-        legacy = await agent(["read", "edit", "create"], first.id);
-      expect(
-        (await service.discover(legacy, {})).documents.map((d) => d.id),
-      ).toEqual([first.id]);
-      await expect(
-        service.read(legacy, { document_id: second.id }),
-      ).rejects.toMatchObject({ code: "grant_denied" });
-      await expect(
-        service.createAgent(legacy, {
-          request_id: randomUUID(),
-          title: "Denied",
-        }),
-      ).rejects.toMatchObject({ code: "grant_denied" });
+    it("enforces narrower token and grant scopes", async () => {
+      const first = await create();
       const account = await agent();
       await expect(
         service.write(

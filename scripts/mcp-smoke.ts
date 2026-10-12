@@ -18,6 +18,15 @@ const doc = await fetch(`${base}/api/documents`, {
   }),
 }).then((r) => r.json());
 if (!doc.id) throw new Error("Could not create test document.");
+for (const method of ["GET", "POST"]) {
+  const removed = await fetch(`${base}/api/documents/${doc.id}/grants`, {
+    method,
+    headers: humanHeaders,
+  });
+  if (removed.status !== 404)
+    throw new Error(`Document connection route still exists (${method}).`);
+}
+console.log("Document-specific connection routes removed: passed");
 const grant = await fetch(`${base}/api/grants`, {
   method: "POST",
   headers: humanHeaders,

@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { Pool } from "pg";
-import { readFile, readdir } from "node:fs/promises";
+import { applyAppMigrations } from "../scripts/app-migrations";
 import { randomUUID } from "node:crypto";
 import { DocumentService } from "../src/server/documents";
 import { transaction } from "../src/server/db";
@@ -27,7 +27,8 @@ describe.skipIf(!url)(
       expiresAt: Date.now() + 3600_000,
       scopes: ["read", "edit", "write"],
     };
-    const ids: string[] = [];
+    const ids: string[] = [],
+      grants: string[] = [];
     async function create() {
       const d = await service.create(user, "Test", "One.\n\nTwo.\n\nMiddle.");
       ids.push(d.id);
@@ -55,20 +56,13 @@ describe.skipIf(!url)(
       });
     }
     beforeAll(async () => {
-      for (const file of (
-        await readdir(new URL("../migrations/", import.meta.url))
-      )
-        .filter((file) => file.endsWith(".sql"))
-        .sort())
-        await db.query(
-          await readFile(
-            new URL(`../migrations/${file}`, import.meta.url),
-            "utf8",
-          ),
-        );
+      await applyAppMigrations(db);
     });
     afterAll(async () => {
       await db.query("DELETE FROM documents WHERE id=ANY($1::uuid[])", [ids]);
+      await db.query("DELETE FROM agent_grants WHERE id=ANY($1::uuid[])", [
+        grants,
+      ]);
       await db.end();
     });
     it("stores durable receipts including no-ops, rejecting reused IDs", async () => {
@@ -195,10 +189,10 @@ describe.skipIf(!url)(
       const id = await create();
       const grant = (
         await db.query(
-          "INSERT INTO agent_grants(document_id,user_id,label,scopes,expires_at) VALUES($1,'test','Agent',ARRAY['read','edit'],clock_timestamp()+interval '1 hour') RETURNING id",
-          [id],
+          "INSERT INTO agent_grants(user_id,label,scopes,expires_at) VALUES('test','Agent',ARRAY['read','edit'],clock_timestamp()+interval '1 hour') RETURNING id",
         )
       ).rows[0];
+      grants.push(grant.id);
       const agent: Identity = {
         ...user,
         kind: "agent",
@@ -259,10 +253,10 @@ describe.skipIf(!url)(
         block = (await service.read(user, { document_id: id })).blocks![0];
       const grant = (
         await db.query(
-          "INSERT INTO agent_grants(document_id,user_id,label,scopes,expires_at) VALUES($1,'test','Agent',ARRAY['read','edit'],clock_timestamp()+interval '1 hour') RETURNING id",
-          [id],
+          "INSERT INTO agent_grants(user_id,label,scopes,expires_at) VALUES('test','Agent',ARRAY['read','edit'],clock_timestamp()+interval '1 hour') RETURNING id",
         )
       ).rows[0];
+      grants.push(grant.id);
       const lock = await db.connect();
       let attempt: Promise<any> | undefined;
       try {
