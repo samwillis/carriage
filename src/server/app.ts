@@ -137,6 +137,7 @@ app.get("/.well-known/oauth-protected-resource", (c) =>
       "document:read",
       "document:edit",
       "document:write",
+      "document:create",
       "offline_access",
     ],
     bearer_methods_supported: ["header"],
@@ -157,16 +158,17 @@ app.get("/oauth/consent", async (c) => {
   const {
     rows: [grant],
   } = await pool.query(
-    'SELECT g.*,d.title,c.name AS client_name FROM agent_grants g JOIN documents d ON d.id=g.document_id LEFT JOIN oauth_clients c ON c."clientId"=g.oauth_client_id WHERE g.id=$1 AND g.user_id=$2',
+    'SELECT g.*,d.title,c.name AS client_name FROM agent_grants g LEFT JOIN documents d ON d.id=g.document_id LEFT JOIN oauth_clients c ON c."clientId"=g.oauth_client_id WHERE g.id=$1 AND g.user_id=$2',
     [session.session.grantId, session.user.id],
   );
   const params = new URLSearchParams(query);
   if (
     !grant ||
     grant.revoked_at ||
+    new Date(grant.expires_at).getTime() <= Date.now() ||
     grant.oauth_client_id !== params.get("client_id")
   )
-    fail(403, "grant_denied", "Document approval is unavailable.");
+    fail(403, "grant_denied", "Agent approval is unavailable.");
   const text = (value: string) =>
     value.replace(
       /[&<>"']/g,
@@ -180,7 +182,7 @@ app.get("/oauth/consent", async (c) => {
         })[char]!,
     );
   return c.html(
-    `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect agent · Carriage</title><style>body{background:#eef1eb;color:#182821;font:16px system-ui;display:grid;place-items:center;min-height:90vh}main{max-width:420px;padding:40px;background:white;border-radius:20px}button{padding:12px 20px;border:0;border-radius:8px;background:#1f5341;color:white;margin-right:12px;cursor:pointer}p{line-height:1.6}small{overflow-wrap:anywhere}</style></head><body><main><h1>Connect agent</h1><p>Allow <strong>${text(grant.client_name ?? "this agent")}</strong> to access <strong>${text(grant.title)}</strong> with these permissions: ${text(grant.scopes.join(", "))}.</p><p>You can revoke access from this document’s Connect agent panel.</p><button id="accept">Allow connection</button><button id="deny">Decline</button><p id="error" role="alert"></p></main><script>const query=${JSON.stringify(query).replace(/</g, "\\u003c")};async function finish(accept){try{const r=await fetch('/api/oauth/oauth2/consent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accept,oauth_query:query})});const d=await r.json();if(!r.ok)throw new Error(d.message||d.error_description||'Connection failed');location.assign(d.redirect_uri||d.url);}catch(e){document.getElementById('error').textContent=e.message;}}document.getElementById('accept').onclick=()=>finish(true);document.getElementById('deny').onclick=()=>finish(false);</script></body></html>`,
+    `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect agent · Carriage</title><style>body{background:#eef1eb;color:#182821;font:16px system-ui;display:grid;place-items:center;min-height:90vh}main{max-width:420px;padding:40px;background:white;border-radius:20px}button{padding:12px 20px;border:0;border-radius:8px;background:#1f5341;color:white;margin-right:12px;cursor:pointer}p{line-height:1.6}small{overflow-wrap:anywhere}</style></head><body><main><h1>Connect agent</h1><p>Allow <strong>${text(grant.client_name ?? "this agent")}</strong> to access <strong>${text(grant.document_id ? grant.title : session.user.name + "’s documents")}</strong> with these permissions: ${text(grant.scopes.join(", "))}.</p><p>Existing document permissions still apply. You can revoke this connection from the Agent panel.</p><button id="accept">Allow connection</button><button id="deny">Decline</button><p id="error" role="alert"></p></main><script>const query=${JSON.stringify(query).replace(/</g, "\\u003c")};async function finish(accept){try{const r=await fetch('/api/oauth/oauth2/consent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accept,oauth_query:query})});const d=await r.json();if(!r.ok)throw new Error(d.message||d.error_description||'Connection failed');location.assign(d.redirect_uri||d.url);}catch(e){document.getElementById('error').textContent=e.message;}}document.getElementById('accept').onclick=()=>finish(true);document.getElementById('deny').onclick=()=>finish(false);</script></body></html>`,
   );
 });
 app.use("/api/*", async (c, next) => {
@@ -273,8 +275,9 @@ app.post("/api/documents/:id/presence", async (c) => {
   await documents.authorize(pool, id, identity);
   const args = presenceInput.parse(await c.req.json());
   await pool.query(
-    `INSERT INTO document_presence(document_id,session_id,user_id,label,kind,activity,expires_at,cursor,cursor_version) VALUES($1,$2,$3,$4,'person',$5,clock_timestamp()+interval '45 seconds',$6,COALESCE($7::bigint,1))
-    ON CONFLICT(document_id,session_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,expires_at=excluded.expires_at,cursor=excluded.cursor,cursor_version=CASE WHEN $7::bigint IS NULL THEN document_presence.cursor_version+1 ELSE excluded.cursor_version END WHERE document_presence.user_id=excluded.user_id AND ($7::bigint IS NULL OR document_presence.cursor_version<excluded.cursor_version)`,
+    `INSERT INTO document_presence(document_id,session_id,user_id,label,kind,activity,expires_at,cursor,cursor_version,updated_at)
+     VALUES($1,$2,$3,$4,'person',$5,clock_timestamp()+CASE WHEN $8 THEN interval '0 seconds' ELSE interval '45 seconds' END,$6,COALESCE($7::bigint,1),clock_timestamp())
+    ON CONFLICT(document_id,session_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,expires_at=excluded.expires_at,cursor=excluded.cursor,updated_at=excluded.updated_at,cursor_version=CASE WHEN $7::bigint IS NULL THEN document_presence.cursor_version+1 ELSE excluded.cursor_version END WHERE document_presence.user_id=excluded.user_id AND ($7::bigint IS NULL OR document_presence.cursor_version<excluded.cursor_version)`,
     [
       id,
       args.session_id,
@@ -283,10 +286,13 @@ app.post("/api/documents/:id/presence", async (c) => {
       args.activity,
       args.cursor ? JSON.stringify(args.cursor) : null,
       args.sequence ?? null,
+      args.leaving,
     ],
   );
   await pool.query(
-    "DELETE FROM document_presence WHERE document_id=$1 AND expires_at<clock_timestamp()",
+    // Keep a short-lived tombstone so a late, older heartbeat cannot resurrect
+    // a session that has explicitly left the document.
+    "DELETE FROM document_presence WHERE document_id=$1 AND expires_at<clock_timestamp()-interval '2 minutes'",
     [id],
   );
   return c.json({ ok: true, server_time: Date.now() });
@@ -326,6 +332,39 @@ app.post("/api/documents/:id/grants", async (c) => {
   });
   return c.json({ ...grant, token, mcp_url: resource }, 201);
 });
+app.get("/api/grants", async (c) => {
+  const { rows } = await pool.query(
+    `SELECT g.id,g.label,g.scopes,g.expires_at,g.revoked_at,g.oauth_client_id,g.document_id,d.title AS document_title
+     FROM agent_grants g LEFT JOIN documents d ON d.id=g.document_id WHERE g.user_id=$1 ORDER BY g.created_at DESC`,
+    [c.get("identity").userId],
+  );
+  return c.json(rows);
+});
+app.post("/api/grants", async (c) => {
+  const identity = c.get("identity");
+  const args = z
+    .object({
+      label: z.string().trim().min(1).max(80),
+      scopes: z.array(z.enum(["read", "edit", "write", "create"])).min(1),
+      days: z.number().int().min(1).max(30).default(7),
+    })
+    .parse(await c.req.json());
+  const token = secretToken("margin");
+  const {
+    rows: [grant],
+  } = await pool.query(
+    `INSERT INTO agent_grants(user_id,label,token_hash,scopes,expires_at)
+     VALUES($1,$2,$3,$4,clock_timestamp()+($5*interval '1 day')) RETURNING id,label,scopes,expires_at`,
+    [
+      identity.userId,
+      args.label,
+      hash(token),
+      [...new Set(["read", ...args.scopes])],
+      args.days,
+    ],
+  );
+  return c.json({ ...grant, token, mcp_url: resource }, 201);
+});
 app.delete("/api/grants/:id", async (c) => {
   const id = documentId.parse(c.req.param("id"));
   const identity = c.get("identity");
@@ -334,18 +373,18 @@ app.delete("/api/grants/:id", async (c) => {
     [id, identity.userId],
   );
   if (!rowCount) fail(404, "not_found", "Agent connection not found.");
+  await pool.query(
+    "DELETE FROM document_presence WHERE session_id=$1 AND user_id=$2",
+    [`grant:${id}`, identity.userId],
+  );
   return c.json({ ok: true });
 });
 app.post("/api/oauth-ticket", async (c) => {
   const args = z
-    .object({ document_id: documentId, oauth_query: z.string().max(8192) })
+    .object({ oauth_query: z.string().max(8192) })
     .parse(await c.req.json());
   return c.json({
-    url: await createLoginTicket(
-      c.get("identity"),
-      args.document_id,
-      args.oauth_query,
-    ),
+    url: await createLoginTicket(c.get("identity"), args.oauth_query),
   });
 });
 app.get("/api/documents/:id/members", async (c) => {

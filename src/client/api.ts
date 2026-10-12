@@ -2,6 +2,7 @@ export interface Session {
   userId: string;
   name: string;
   token: () => Promise<string>;
+  cachedToken?: string;
 }
 export class ApiError extends Error {
   constructor(
@@ -23,7 +24,16 @@ export async function api<T = any>(
   options: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(options.headers);
-  if (session) headers.set("Authorization", `Bearer ${await session.token()}`);
+  if (session) {
+    // A pagehide keepalive must start synchronously; awaiting the auth SDK can
+    // lose the request as the browsing context is destroyed.
+    const token =
+      options.keepalive && session.cachedToken
+        ? session.cachedToken
+        : await session.token();
+    session.cachedToken = token;
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   if (options.body) headers.set("Content-Type", "application/json");
   const response = await fetch(`${apiBase}${path}`, {
     ...options,

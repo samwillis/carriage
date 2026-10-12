@@ -10,11 +10,46 @@ import { cursorSelection, type Presence } from "../shared/contracts";
 // Remote awareness IDs live above Yjs's uint32 document client IDs. The
 // authenticated session row owns this ID; callers never supply awareness IDs.
 export function presenceId(sessionId: string) {
-  return Number.parseInt(`1${sessionId.replaceAll("-", "").slice(0, 12)}`, 16);
+  if (/^[0-9a-f-]{36}$/i.test(sessionId))
+    return Number.parseInt(
+      `1${sessionId.replaceAll("-", "").slice(0, 12)}`,
+      16,
+    );
+  let value = 2166136261;
+  for (const char of sessionId)
+    value = Math.imul(value ^ char.charCodeAt(0), 16777619) >>> 0;
+  return 2 ** 32 + value;
 }
 export function sessionColor(sessionId: string) {
-  const hex = sessionId.replaceAll("-", "");
-  return `#${[0, 2, 4].map((offset) => (40 + (Number.parseInt(hex.slice(offset, offset + 2), 16) % 80)).toString(16).padStart(2, "0")).join("")}`;
+  // Distinct hues stay readable for avatars, cursor labels and selections.
+  let value = 2166136261;
+  for (const char of sessionId)
+    value = Math.imul(value ^ char.charCodeAt(0), 16777619) >>> 0;
+  const hue = (value % 360) / 30,
+    lightness = 0.38,
+    amplitude = 0.52 * lightness;
+  return `#${[0, 8, 4]
+    .map((offset) => {
+      const k = (offset + hue) % 12;
+      return Math.round(
+        255 * (lightness - amplitude * Math.max(-1, Math.min(k - 3, 9 - k, 1))),
+      )
+        .toString(16)
+        .padStart(2, "0");
+    })
+    .join("")}`;
+}
+export function presenceActivity(row: Presence, now = Date.now()) {
+  if (row.kind === "person")
+    return row.activity === "Editing" ? "Typing" : row.activity;
+  const recent =
+    !row.updated_at || now - new Date(row.updated_at).getTime() < 10_000;
+  if (row.activity === "Reading") return recent ? "Reading" : "Read recently";
+  if (row.activity === "Edited")
+    return recent ? "Edited just now" : "Edited recently";
+  if (row.activity === "Created")
+    return recent ? "Created this document" : "Created recently";
+  return row.activity;
 }
 export class PresenceAwareness {
   readonly awareness: Awareness;
@@ -39,7 +74,6 @@ export class PresenceAwareness {
   sync(rows: Presence[], now: number) {
     const remote = rows.filter(
       (row) =>
-        row.kind === "person" &&
         row.session_id !== this.sessionId &&
         new Date(row.expires_at).getTime() > now,
     );
@@ -59,10 +93,11 @@ export class PresenceAwareness {
       encoding.writeVarString(
         packet,
         JSON.stringify({
-          cursor: row.cursor,
+          cursor: row.activity === "Idle" ? null : row.cursor,
           user: {
-            name: `${row.label}${row.user_id === this.userId ? " · another tab" : ""}`,
+            name: `${row.label}${row.kind === "agent" ? " · agent" : row.user_id === this.userId ? " · another tab" : ""}`,
             color: sessionColor(row.session_id),
+            kind: row.kind,
           },
         }),
       );

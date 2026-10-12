@@ -18,16 +18,17 @@ const doc = await fetch(`${base}/api/documents`, {
   }),
 }).then((r) => r.json());
 if (!doc.id) throw new Error("Could not create test document.");
-const grant = await fetch(`${base}/api/documents/${doc.id}/grants`, {
+const grant = await fetch(`${base}/api/grants`, {
   method: "POST",
   headers: humanHeaders,
   body: JSON.stringify({
     label: "Smoke test agent",
-    scopes: ["read", "edit", "write"],
+    scopes: ["read", "edit", "write", "create"],
     days: 1,
   }),
 }).then((r) => r.json());
 if (!grant.token) throw new Error("Could not create test grant.");
+let createdId: string | undefined;
 const client = new Client({ name: "margin-smoke", version: "1.0.0" });
 try {
   await client.connect(
@@ -36,8 +37,48 @@ try {
     }),
   );
   const tools = await client.listTools();
-  if (tools.tools.length !== 3) throw new Error("Expected three tools.");
+  if (tools.tools.length !== 5) throw new Error("Expected five tools.");
   console.log("MCP initialize and discovery: passed");
+  const listing = await client.callTool({
+    name: "list_documents",
+    arguments: { query: "MCP integration" },
+  });
+  if (
+    listing.isError ||
+    !JSON.parse((listing.content as any)[0].text).documents.some(
+      (d: any) => d.id === doc.id,
+    )
+  )
+    throw new Error("Account document discovery failed");
+  const createArgs = {
+    request_id: randomUUID(),
+    title: "MCP created document",
+    markdown: "Created by agent.",
+  };
+  const created = await client.callTool({
+    name: "create_document",
+    arguments: createArgs,
+  });
+  const replay = await client.callTool({
+    name: "create_document",
+    arguments: createArgs,
+  });
+  if (
+    created.isError ||
+    replay.isError ||
+    JSON.stringify(created.content) !== JSON.stringify(replay.content)
+  )
+    throw new Error("MCP create retry failed");
+  createdId = JSON.parse((created.content as any)[0].text).document_id;
+  const newRead = await client.callTool({
+    name: "read_document",
+    arguments: { document_id: createdId },
+  });
+  if (newRead.isError)
+    throw new Error("Account connection could not read second document");
+  console.log(
+    "MCP account discovery, creation, retry and second document read: passed",
+  );
   const result = await client.callTool({
     name: "read_document",
     arguments: { document_id: doc.id },
@@ -106,6 +147,9 @@ try {
 } finally {
   await client.close();
   const { pool } = await import("../src/server/db");
-  await pool.query("DELETE FROM documents WHERE id=$1", [doc.id]);
+  await pool.query("DELETE FROM documents WHERE id=ANY($1::uuid[])", [
+    [doc.id, ...(createdId ? [createdId] : [])],
+  ]);
+  await pool.query("DELETE FROM agent_grants WHERE id=$1", [grant.id]);
   await pool.end();
 }

@@ -108,4 +108,33 @@ describe("cursor presence", () => {
       }).success,
     ).toBe(false);
   });
+  it("shows agent selections and clears idle cursors without conflating sessions", () => {
+    const doc = new Y.Doc(),
+      bridge = new PresenceAwareness(doc, own, "user", "Writer");
+    const cursor = {
+      anchor: { tname: "prosemirror" as const },
+      head: { tname: "prosemirror" as const },
+    };
+    const agent = {
+      ...row(cursor),
+      kind: "agent" as const,
+      session_id: `grant:${other}`,
+      label: "Claude",
+      activity: "Edited",
+    };
+    bridge.sync([row(cursor), agent], Date.now());
+    const remote = bridge.awareness
+      .getStates()
+      .get(presenceId(agent.session_id));
+    expect(remote?.user.name).toBe("Claude · agent");
+    expect(remote?.cursor).toEqual(cursor);
+    expect(remote?.user.color).toMatch(/^#[0-9a-f]{6}$/);
+    expect(presenceId(agent.session_id)).not.toBe(presenceId(other));
+    bridge.sync([{ ...row(cursor, 2), activity: "Idle" }, agent], Date.now());
+    expect(
+      bridge.awareness.getStates().get(presenceId(other))?.cursor,
+    ).toBeNull();
+    bridge.destroy();
+    doc.destroy();
+  });
 });

@@ -28,6 +28,7 @@ import type { Editor } from "@milkdown/kit/core";
 import { api, post, type Session } from "./api";
 import { auth, currentSession } from "./auth";
 import { DocumentProvider } from "./provider";
+import { Participants } from "./participants";
 import { WritingEditor, format, type Format } from "./editor";
 import { renderDocument } from "../shared/codec";
 import type { DocumentInfo } from "../shared/contracts";
@@ -41,6 +42,7 @@ export function App() {
     );
   const [query, setQuery] = useState(""),
     [dialog, setDialog] = useState(false),
+    [agentDialog, setAgentDialog] = useState(false),
     [error, setError] = useState(""),
     [title, setTitle] = useState(""),
     [sidebar, setSidebar] = useState(false);
@@ -56,6 +58,19 @@ export function App() {
     setDocuments(rows);
     setSelected((current) => current ?? rows[0]?.id ?? null);
   };
+  useEffect(() => {
+    if (!session || location.pathname === "/oauth/connect") return;
+    const update = () => {
+      if (document.visibilityState === "visible")
+        void refresh(session).catch(() => {});
+    };
+    const interval = setInterval(update, 15_000);
+    window.addEventListener("focus", update);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", update);
+    };
+  }, [session]);
   useEffect(() => {
     if (session)
       void (async () => {
@@ -91,7 +106,7 @@ export function App() {
   if (!loaded) return <div className="boot">Opening your workspace…</div>;
   if (!session) return <Login onSession={setSession} />;
   if (location.pathname === "/oauth/connect")
-    return <OAuthConnect session={session} documents={documents} />;
+    return <OAuthConnect session={session} />;
   return (
     <div className={`workspace ${sidebar ? "sidebar-open" : ""}`}>
       <aside className="sidebar">
@@ -136,6 +151,13 @@ export function App() {
             ) && <p className="sidebar-empty">No documents found.</p>}
         </nav>
         <div className="sidebar-bottom">
+          <button
+            className="account-agent"
+            onClick={() => setAgentDialog(true)}
+          >
+            <Bot size={16} />
+            Agent connections
+          </button>
           <button
             className="profile"
             onClick={() =>
@@ -185,6 +207,9 @@ export function App() {
           </div>
         )}
       </main>
+      {agentDialog && (
+        <AgentDialog session={session} onClose={() => setAgentDialog(false)} />
+      )}
       {dialog && (
         <Modal title="New document" onClose={() => setDialog(false)}>
           <form
@@ -397,11 +422,6 @@ function Document({
     return () => provider.doc.off("update", changed);
   }, [provider, state.ready]);
   const readOnly = state.document?.role === "viewer" || state.paused;
-  const people = state.presence.filter(
-    (p) => p.session_id !== provider.sessionId,
-  );
-  const presenceLabel = (p: (typeof people)[number]) =>
-    `${p.label}${p.kind === "person" && p.user_id === session.userId ? " · another browser or tab" : ""} · ${p.activity}`;
   const words = markdown.trim() ? markdown.trim().split(/\s+/).length : 0;
   function download() {
     const url = URL.createObjectURL(
@@ -464,37 +484,11 @@ function Document({
           </div>
         )}
         <div className="header-actions">
-          {people.length > 0 && (
-            <div
-              className="presence"
-              role="group"
-              aria-label={`${people.length + 1} connected sessions, including you`}
-              title={[
-                `${session.name} · you`,
-                ...people.map(presenceLabel),
-              ].join("\n")}
-            >
-              <span className="presence-avatars">
-                {people.slice(0, 3).map((p) => (
-                  <span
-                    className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
-                    key={p.session_id}
-                    title={presenceLabel(p)}
-                  >
-                    {p.kind === "agent" ? (
-                      <Bot size={14} />
-                    ) : (
-                      p.label.slice(0, 1)
-                    )}
-                  </span>
-                ))}
-              </span>
-              <span className="presence-count" aria-hidden="true">
-                {people.length + 1}
-                <span> here</span>
-              </span>
-            </div>
-          )}
+          <Participants
+            provider={provider}
+            rows={state.presence}
+            editor={source ? null : editor}
+          />
           <button
             className="header-link share-control"
             aria-label="Share"
@@ -662,12 +656,14 @@ function Document({
               <p>
                 {session.name} <small>You</small>
               </p>
-              {people.map((p) => (
-                <p key={p.session_id}>
-                  {p.label}
-                  <small>{p.activity}</small>
-                </p>
-              ))}
+              {state.presence
+                .filter((p) => p.session_id !== provider.sessionId)
+                .map((p) => (
+                  <p key={p.session_id}>
+                    {p.label}
+                    <small>{p.activity}</small>
+                  </p>
+                ))}
             </div>
           </aside>
         )}
@@ -686,16 +682,12 @@ function Document({
           id={id}
           session={session}
           role={state.document?.role ?? "viewer"}
+          onAgent={() => setModal("agent")}
           onClose={() => setModal(null)}
         />
       )}
       {modal === "agent" && (
-        <AgentDialog
-          id={id}
-          session={session}
-          readOnly={readOnly}
-          onClose={() => setModal(null)}
-        />
+        <AgentDialog session={session} onClose={() => setModal(null)} />
       )}
       {rename && (
         <Modal title="Rename document" onClose={() => setRename(false)}>
@@ -810,11 +802,13 @@ function ShareDialog({
   id,
   session,
   role,
+  onAgent,
   onClose,
 }: {
   id: string;
   session: Session;
   role: string;
+  onAgent: () => void;
   onClose: () => void;
 }) {
   const [members, setMembers] = useState<any[]>([]),
@@ -833,7 +827,7 @@ function ShareDialog({
   return (
     <Modal
       title="Share document"
-      subtitle="Invite someone to view or edit this document."
+      subtitle="Invite a collaborator or work on this document with an agent."
       onClose={onClose}
     >
       {role === "owner" && (
@@ -920,6 +914,27 @@ function ShareDialog({
               </button>
             </div>
           ))}
+      <div className="agent-guide share-agent">
+        <h3>Work with an agent</h3>
+        <p>
+          Connect the Carriage MCP server in your agent’s app, then give it this
+          document ID. The connection uses your account’s document permissions.
+        </p>
+        <CopyBox value={id} label="Copy document ID" />
+        <button className="secondary" onClick={onAgent}>
+          <Bot size={15} />
+          Set up MCP connection
+        </button>
+        <p>Or copy a prompt to get started:</p>
+        <CopyBox
+          value={
+            role === "viewer"
+              ? `Use Carriage to read document ${id}. Start with its outline, then read the relevant blocks and summarize the document. Do not make edits.`
+              : `Use Carriage to read document ${id}. Start with its outline, then read the opening paragraph. Tighten that paragraph using edit_document, preserving the rest of the document. Tell me what you changed.`
+          }
+          label="Copy document agent prompt"
+        />
+      </div>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -954,7 +969,7 @@ const hostedAgentGuides = {
     steps: [
       "On ChatGPT web, open Plugins → + → Add custom MCP server. Name it Carriage and paste the MCP URL below.",
       "Choose OAuth authentication. If asked how to register the client, choose dynamic registration (DCR). Leave the client ID and secret blank.",
-      "Create the plugin, sign in to Carriage, choose this document, and approve access. Install the plugin if prompted.",
+      "Create the plugin, sign in to Carriage, approve access to your documents. Install the plugin if prompted.",
       "In a new chat, type @ and select Carriage. Paste the example prompt below and approve the edit when ChatGPT asks.",
     ],
     note: "Custom MCP access depends on your account and workspace permissions. Some versions call these Apps or Connectors.",
@@ -965,7 +980,7 @@ const hostedAgentGuides = {
     steps: [
       "Open Customize → Connectors → + Add → Add custom connector. Name it Carriage and paste the MCP URL below.",
       "Choose Sign in now. If an OAuth client option is shown, choose Register automatically.",
-      "Sign in to Carriage, choose this document, and approve access. Finish adding the connector.",
+      "Sign in to Carriage, approve access to your documents. Finish adding the connector.",
       "In a chat, open + → Connectors and enable Carriage. Paste the example prompt below and approve edits when asked.",
     ],
     note: "Custom connectors depend on your plan. A workspace owner may need to add the connector first.",
@@ -975,7 +990,7 @@ const hostedAgentGuides = {
     name: "Other MCP clients",
     steps: [
       "Add a remote MCP server named Carriage using the URL below and Streamable HTTP transport.",
-      "Choose OAuth with automatic client registration. Sign in to Carriage, choose this document, and approve access.",
+      "Choose OAuth with automatic client registration. Sign in to Carriage, approve access to your documents.",
       "Enable the server’s tools in your conversation, then paste the example prompt below.",
     ],
     note: "If your client accepts a bearer token instead, choose An access token under Connection method.",
@@ -1074,14 +1089,10 @@ function LocalAgentSetup({
   );
 }
 function AgentDialog({
-  id,
   session,
-  readOnly,
   onClose,
 }: {
-  id: string;
   session: Session;
-  readOnly: boolean;
   onClose: () => void;
 }) {
   const [client, setClient] = useState<"chatgpt" | "claude" | LocalAgentClient>(
@@ -1091,11 +1102,10 @@ function AgentDialog({
     [config, setConfig] = useState<any>(null),
     [grants, setGrants] = useState<any[]>([]),
     [label, setLabel] = useState("My agent"),
-    [scope, setScope] = useState(readOnly ? "read" : "edit"),
+    [scope, setScope] = useState("edit"),
     [connection, setConnection] = useState<any>(null),
     [error, setError] = useState("");
-  const refresh = async () =>
-    setGrants(await api(`/api/documents/${id}/grants`, session));
+  const refresh = async () => setGrants(await api("/api/grants", session));
   useEffect(() => {
     void api("/api/config")
       .then(setConfig)
@@ -1111,13 +1121,13 @@ function AgentDialog({
       client === "chatgpt" || client === "claude" ? client : "other"
     ];
   const examplePrompt =
-    readOnly || (useToken && !connection?.scopes.includes("edit"))
-      ? `Use Carriage to read document ${id}. Start with its outline, then read the relevant blocks and summarize the document. Do not make edits.`
-      : `Use Carriage to read document ${id}. Start with its outline, then read the opening paragraph. Tighten that paragraph using edit_document, preserving the rest of the document. Tell me what you changed.`;
+    useToken && !connection?.scopes.includes("create")
+      ? "Use Carriage to list my documents. Ask which one I’d like you to read."
+      : 'Use Carriage to list my documents. Then create a document titled "Ideas" with a few starting points. Return its editor link.';
   return (
     <Modal
       title="Connect agent"
-      subtitle="Give an agent access to this document."
+      subtitle="Connect an agent to your Carriage account."
       onClose={onClose}
     >
       <label className="field">
@@ -1173,8 +1183,8 @@ function AgentDialog({
       ) : (
         <>
           <p className="dialog-copy">
-            Choose what your agent can do, then create a connection. We’ll show
-            the configuration to copy into your app.
+            Access covers all documents you can open, including new ones. Your
+            document permissions still apply.
           </p>
           <label className="field">
             Connection name
@@ -1188,19 +1198,17 @@ function AgentDialog({
             Agent permissions
             <select value={scope} onChange={(e) => setScope(e.target.value)}>
               <option value="read">Read only</option>
-              {!readOnly && (
-                <>
-                  <option value="edit">Read + targeted edits</option>
-                  <option value="write">Read + edits + full replacement</option>
-                </>
-              )}
+              <option value="edit">Read, edit + create documents</option>
+              <option value="write">
+                Read, edit, create + full replacement
+              </option>
             </select>
           </label>
           <button
             className="primary"
             onClick={() =>
               void api(
-                `/api/documents/${id}/grants`,
+                "/api/grants",
                 session,
                 post({
                   label,
@@ -1208,8 +1216,8 @@ function AgentDialog({
                     scope === "read"
                       ? ["read"]
                       : scope === "edit"
-                        ? ["read", "edit"]
-                        : ["read", "edit", "write"],
+                        ? ["read", "edit", "create"]
+                        : ["read", "edit", "write", "create"],
                   days: 7,
                 }),
               )
@@ -1238,22 +1246,23 @@ function AgentDialog({
       {(!useToken || connection) && (
         <div className="agent-guide agent-example">
           <h3>Try it</h3>
-          <p>
-            Paste this into your agent’s chat after connecting. It includes this
-            document’s ID.
-          </p>
+          <p>Paste this into your agent’s chat after connecting.</p>
           <CopyBox value={examplePrompt} label="Copy example prompt" />
           <p>
-            Keep the document open to watch edits appear. Access is limited to
-            the connected document and the approved permissions.
+            Keep a document open to watch edits appear. The agent can find your
+            documents by title and create new ones if you allow it.
+          </p>
+          <p className="hint">
+            To work on a specific document, open its Share panel and copy the
+            document ID or prompt.
           </p>
         </div>
       )}
       <div className="dialog-list">
         <span className="section-label">Connections</span>
         <p className="hint">
-          Revoke a connection here to stop its access. Reconnect to work on
-          another document.
+          These connections belong to your account. Revoking one stops its
+          access across all documents.
         </p>
         {grants
           .filter((g) => !g.revoked_at)
@@ -1262,6 +1271,9 @@ function AgentDialog({
               <span>
                 {g.label}
                 <small>
+                  {g.document_id
+                    ? `Only ${g.document_title} · `
+                    : "All your documents · "}
                   {g.scopes.join(" + ")} · expires{" "}
                   {new Date(g.expires_at).toLocaleDateString()}
                 </small>
@@ -1289,18 +1301,12 @@ function AgentDialog({
     </Modal>
   );
 }
-function OAuthConnect({
-  session,
-  documents,
-}: {
-  session: Session;
-  documents: DocumentInfo[];
-}) {
-  const [id, setId] = useState(""),
-    [error, setError] = useState(""),
+function OAuthConnect({ session }: { session: Session }) {
+  const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const query = location.search.slice(1),
     scopes = new URLSearchParams(query).get("scope") ?? "document:read";
+  const requested = scopes.split(" ");
   return (
     <div className="oauth-page">
       <a className="wordmark" href="/">
@@ -1308,32 +1314,30 @@ function OAuthConnect({
         <span className="brand-dot" />
       </a>
       <section className="modal">
-        <h2>Choose a document</h2>
+        <h2>Connect your account</h2>
         <p>
-          You’re signed in as {session.name}. This agent is requesting: {scopes}
+          You’re signed in as {session.name}. This connection can access
+          documents you own and documents shared with you. Existing document
+          permissions still apply.
+        </p>
+        <p>
+          The agent is requesting permission to{" "}
+          {[
+            requested.includes("document:read") && "read",
+            requested.includes("document:edit") && "edit",
+            requested.includes("document:write") && "replace contents",
+            requested.includes("document:create") && "create documents",
+          ]
+            .filter(Boolean)
+            .join(", ")}
           .
         </p>
-        <label className="field">
-          Document
-          <select value={id} onChange={(e) => setId(e.target.value)}>
-            <option value="">Choose a document</option>
-            {documents.map((d) => (
-              <option value={d.id} key={d.id}>
-                {d.title} ({d.role})
-              </option>
-            ))}
-          </select>
-        </label>
         <button
           className="primary"
-          disabled={!id || busy}
+          disabled={busy}
           onClick={() => {
             setBusy(true);
-            void api(
-              "/api/oauth-ticket",
-              session,
-              post({ document_id: id, oauth_query: query }),
-            )
+            void api("/api/oauth-ticket", session, post({ oauth_query: query }))
               .then((d) => location.assign(d.url))
               .catch((e) => {
                 setError(e.message);

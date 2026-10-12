@@ -52,6 +52,10 @@ export class DocumentProvider {
   private presenceAgain = false;
   private presenceLastSent = 0;
   private presenceSequence = 0;
+  private presenceDeparted = false;
+  private activeAt = Date.now();
+  private activityTimer: ReturnType<typeof setTimeout> | undefined;
+  private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private failedQueries = new Set<string>();
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
@@ -96,6 +100,10 @@ export class DocumentProvider {
       local = origin !== REMOTE;
     if (local) {
       this.editedAt = Date.now();
+      this.interacted();
+      this.schedulePresence();
+      clearTimeout(this.activityTimer);
+      this.activityTimer = setTimeout(() => this.schedulePresence(), 3000);
       this.publish({ status: "Saving…" });
     }
     this.persistence = this.persistence
@@ -154,6 +162,14 @@ export class DocumentProvider {
       }, 15_000);
       window.addEventListener("online", this.online);
       window.addEventListener("offline", this.offline);
+      this.interacted();
+      window.addEventListener("focus", this.visibilityChanged);
+      window.addEventListener("blur", this.visibilityChanged);
+      window.addEventListener("pagehide", this.leave);
+      window.addEventListener("pageshow", this.reenter);
+      window.addEventListener("pointerdown", this.interacted);
+      window.addEventListener("keydown", this.interacted);
+      document.addEventListener("visibilitychange", this.visibilityChanged);
     } catch (error) {
       if (!this.closed) {
         if (
@@ -174,6 +190,37 @@ export class DocumentProvider {
     void this.flush();
   };
   private offline = () => this.publish({ status: "Offline" });
+  private interacted = () => {
+    const wasIdle = Date.now() - this.activeAt >= 60_000;
+    this.activeAt = Date.now();
+    clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => this.schedulePresence(), 60_000);
+    if (wasIdle) this.schedulePresence();
+  };
+  private visibilityChanged = () => {
+    if (document.visibilityState === "visible" && document.hasFocus())
+      this.interacted();
+    this.schedulePresence();
+  };
+  private leave = () => {
+    if (this.presenceDeparted) return;
+    this.presenceDeparted = true;
+    if (!this.hydrated) return;
+    void api(`/api/documents/${this.id}/presence`, this.session, {
+      ...post({
+        session_id: this.sessionId,
+        activity: "Idle",
+        cursor: null,
+        sequence: ++this.presenceSequence,
+        leaving: true,
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  };
+  private reenter = () => {
+    this.presenceDeparted = false;
+    this.visibilityChanged();
+  };
   private async connect() {
     this.client?.close();
     for (const fn of this.cleanups) fn();
@@ -520,7 +567,13 @@ export class DocumentProvider {
       this.schedulePresence();
   };
   private schedulePresence() {
-    if (this.closed || this.state.paused || this.presenceTimer) return;
+    if (
+      this.closed ||
+      this.presenceDeparted ||
+      this.state.paused ||
+      this.presenceTimer
+    )
+      return;
     this.presenceTimer = setTimeout(
       () => {
         this.presenceTimer = undefined;
@@ -530,7 +583,13 @@ export class DocumentProvider {
     );
   }
   private async heartbeat() {
-    if (this.closed || this.state.paused || !this.hydrated || !navigator.onLine)
+    if (
+      this.closed ||
+      this.presenceDeparted ||
+      this.state.paused ||
+      !this.hydrated ||
+      !navigator.onLine
+    )
       return;
     if (this.presenceSending) {
       this.presenceAgain = true;
@@ -544,8 +603,20 @@ export class DocumentProvider {
         this.session,
         post({
           session_id: this.sessionId,
-          activity: Date.now() - this.editedAt < 10_000 ? "Editing" : "Viewing",
-          cursor: this.presence.cursor(),
+          activity:
+            document.visibilityState !== "visible" ||
+            !document.hasFocus() ||
+            Date.now() - this.activeAt >= 60_000
+              ? "Idle"
+              : Date.now() - this.editedAt < 3000
+                ? "Editing"
+                : "Viewing",
+          cursor:
+            document.visibilityState === "visible" &&
+            document.hasFocus() &&
+            Date.now() - this.activeAt < 60_000
+              ? this.presence.cursor()
+              : null,
           sequence: ++this.presenceSequence,
         }),
       );
@@ -561,16 +632,27 @@ export class DocumentProvider {
     }
   }
   close() {
+    if (this.closed) return;
+    this.leave();
     this.closed = true;
     this.client?.close();
     clearInterval(this.timer);
     clearTimeout(this.retryTimer);
     clearTimeout(this.presenceTimer);
+    clearTimeout(this.activityTimer);
+    clearTimeout(this.idleTimer);
     this.presence.awareness.off("change", this.awarenessChanged);
     this.presence.destroy();
     for (const fn of this.cleanups) fn();
     window.removeEventListener("online", this.online);
     window.removeEventListener("offline", this.offline);
+    window.removeEventListener("focus", this.visibilityChanged);
+    window.removeEventListener("blur", this.visibilityChanged);
+    window.removeEventListener("pagehide", this.leave);
+    window.removeEventListener("pageshow", this.reenter);
+    window.removeEventListener("pointerdown", this.interacted);
+    window.removeEventListener("keydown", this.interacted);
+    document.removeEventListener("visibilitychange", this.visibilityChanged);
     this.doc.off("update", this.changed);
     this.listeners.clear();
   }

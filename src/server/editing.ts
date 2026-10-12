@@ -1,7 +1,10 @@
 import * as Y from "yjs";
 import { Transform } from "@milkdown/kit/prose/transform";
 import { Fragment, type Node as ProseNode } from "@milkdown/kit/prose/model";
-import { updateYFragment } from "y-prosemirror";
+import {
+  updateYFragment,
+  absolutePositionToRelativePosition,
+} from "y-prosemirror";
 import {
   cloneDoc,
   parseMarkdown,
@@ -15,6 +18,7 @@ import {
   SCHEMA_VERSION,
   type Block,
   type EditOperation,
+  type CursorSelection,
 } from "../shared/contracts";
 import { hash } from "./identity";
 import { fail, AppError } from "./errors";
@@ -29,6 +33,52 @@ interface PreparedEdit {
   draft: Y.Doc;
   update: Uint8Array | null;
   unchanged: boolean;
+  cursor?: CursorSelection | null;
+}
+function selection(
+  projection: ReturnType<typeof project>,
+  doc: Y.Doc,
+  from: number,
+  to: number,
+): CursorSelection {
+  const root = doc.getXmlFragment("prosemirror");
+  const max = Math.max(0, projection.doc.content.size - 1);
+  return {
+    anchor: Y.relativePositionToJSON(
+      absolutePositionToRelativePosition(
+        Math.max(0, Math.min(from, max)),
+        root,
+        projection.meta.mapping,
+      ),
+    ),
+    head: Y.relativePositionToJSON(
+      absolutePositionToRelativePosition(
+        Math.max(0, Math.min(to, max)),
+        root,
+        projection.meta.mapping,
+      ),
+    ),
+  } as CursorSelection;
+}
+export function blockCursor(
+  doc: Y.Doc,
+  id: string,
+  refs?: string[],
+): CursorSelection | null {
+  if (!refs?.length) return null;
+  const copy = cloneDoc(doc);
+  try {
+    const { projection, entries } = targets(copy, id);
+    const target = resolve(copy, id, refs[0], entries);
+    return selection(
+      projection,
+      copy,
+      target.pos + 1,
+      target.pos + target.node.nodeSize - 1,
+    );
+  } finally {
+    copy.destroy();
+  }
 }
 export function targets(doc: Y.Doc, documentId: string) {
   const projection = project(doc);
@@ -258,7 +308,20 @@ export function prepareEdit(
       draft.off("update", capture);
     }
     validateCopy(draft);
-    return { draft, update, unchanged: !update };
+    const first = changes.find((change) => change.index === 0)!;
+    const copy = cloneDoc(draft);
+    let cursor: CursorSelection;
+    try {
+      cursor = selection(
+        project(copy),
+        copy,
+        transform.mapping.map(first.from, -1),
+        transform.mapping.map(first.to, 1),
+      );
+    } finally {
+      copy.destroy();
+    }
+    return { draft, update, unchanged: !update, cursor };
   } catch (error) {
     draft.destroy();
     if (error instanceof AppError) throw error;

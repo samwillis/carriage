@@ -42,15 +42,10 @@ try {
   await other.goto(`${base}/?doc=${doc.id}`);
   await other.getByTestId("document-editor").waitFor({ timeout: 30000 });
   for (const tab of [page, other]) {
-    await tab
-      .getByRole("group", {
-        name: "2 connected sessions, including you",
-        exact: true,
-      })
-      .waitFor({ timeout: 30000 });
-    await tab
-      .locator('.presence .avatar[title*="another browser or tab"]')
-      .waitFor();
+    await tab.getByText("2 here", { exact: true }).waitFor({ timeout: 30000 });
+    await tab.locator(".presence-panel summary").click();
+    await tab.getByText("Your other session", { exact: false }).waitFor();
+    await tab.locator(".presence-panel summary").click();
   }
   const {
     rows: [counts],
@@ -80,12 +75,36 @@ try {
     animations: "disabled",
   });
   console.log("Presence stays visible on mobile: passed.");
+  other.on("request", (request) => {
+    if (
+      new URL(request.url()).pathname.endsWith("/presence") &&
+      request.postDataJSON()?.leaving
+    )
+      console.log("Page departure keepalive: sent");
+  });
+  other.on("response", (response) => {
+    if (
+      new URL(response.url()).pathname.endsWith("/presence") &&
+      response.request().postDataJSON()?.leaving
+    )
+      console.log("Page departure keepalive status:", response.status());
+  });
+  await other.goto("about:blank");
+  await expect(page.locator(".presence")).toBeHidden({ timeout: 15000 });
   await second.close();
-  await expect(page.locator(".presence")).toBeHidden({ timeout: 65000 });
   console.log(
-    "Closed browser expires from presence while the remaining browser renews: passed.",
+    "Closed browser promptly leaves presence while the remaining browser renews: passed.",
   );
 } catch (error) {
+  console.log(
+    "Presence departure records:",
+    (
+      await database.query(
+        "SELECT activity,cursor_version,expires_at<clock_timestamp() AS expired FROM document_presence WHERE document_id=$1",
+        [doc.id],
+      )
+    ).rows,
+  );
   throw new Error(
     String(error.message).replace(/https?:\/\/[^\s"'<>]+/g, (value) => {
       const url = new URL(value);

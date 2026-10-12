@@ -373,6 +373,73 @@ p {
 .presence-avatars {
   display: flex;
 }
+.presence-avatars > span + span {
+  margin-left: -7px;
+}
+.presence-panel {
+  position: relative;
+}
+.presence-panel summary {
+  cursor: pointer;
+  list-style: none;
+  border-radius: 6px;
+}
+.presence-panel summary::-webkit-details-marker {
+  display: none;
+}
+.presence-panel summary:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+.participants-list {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 30;
+  width: min(290px, calc(100vw - 32px));
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px #18282112;
+}
+.participant {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 6px;
+  font-size: 13px;
+}
+.participant > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.participant small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+.participant .avatar {
+  flex-shrink: 0;
+}
+.avatar.idle {
+  opacity: 0.45;
+}
+.account-agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.account-agent:hover {
+  color: var(--green);
+}
 .presence-count {
   color: var(--green);
   font-size: 11px;

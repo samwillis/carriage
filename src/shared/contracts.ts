@@ -33,6 +33,7 @@ export const presenceInput = z.object({
   activity: z.enum(["Viewing", "Editing", "Idle"]),
   cursor: cursorSelection.nullable().default(null),
   sequence: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+  leaving: z.boolean().default(false),
 });
 export type CursorSelection = z.infer<typeof cursorSelection>;
 export const editOperation = z.discriminatedUnion("type", [
@@ -86,6 +87,16 @@ export const readInput = z.object({
   refs: z.array(z.string()).max(100).optional(),
   if_revision: z.number().int().optional(),
 });
+export const listInput = z.object({
+  query: z.string().trim().max(200).default(""),
+  limit: z.number().int().min(1).max(100).default(30),
+  after: documentId.optional(),
+});
+export const createInput = z.object({
+  request_id: requestId,
+  title: z.string().trim().min(1).max(200),
+  markdown: z.string().max(LIMITS.markdownBytes).default(""),
+});
 export interface DocumentInfo {
   id: string;
   title: string;
@@ -114,6 +125,7 @@ export interface Presence {
   expires_at: Date | string;
   cursor: CursorSelection | null;
   cursor_version: string | number;
+  updated_at?: Date | string;
 }
 export interface Block {
   ref: string;

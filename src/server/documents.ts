@@ -23,8 +23,11 @@ import {
   editInput,
   writeInput,
   readInput,
+  listInput,
+  createInput,
+  type CursorSelection,
 } from "../shared/contracts";
-import { prepareEdit, prepareWrite, readBlocks } from "./editing";
+import { prepareEdit, prepareWrite, readBlocks, blockCursor } from "./editing";
 
 export class DocumentService {
   private cache = new Map<string, { head: number; bytes: Uint8Array }>();
@@ -37,6 +40,67 @@ export class DocumentService {
       maxAgeSeconds: 60,
     },
   ) {}
+  async agentPresence(
+    client: Pick<PoolClient, "query">,
+    id: string,
+    identity: Identity,
+    activity: string,
+    cursor: CursorSelection | null = null,
+  ) {
+    if (identity.kind !== "agent") return;
+    // Presence follows the same live grant and membership as the operation.
+    // Account agents appear only in documents they actually work on.
+    await client.query(
+      `INSERT INTO document_presence(document_id,session_id,user_id,label,kind,activity,cursor,cursor_version,updated_at,expires_at)
+       SELECT $1,$2,$3,$4,'agent',$5,$6,1,clock_timestamp(),least(g.expires_at,$7::timestamptz,clock_timestamp()+interval '45 seconds')
+       FROM document_members m JOIN agent_grants g ON g.id=$8 AND g.user_id=m.user_id
+       WHERE m.document_id=$1 AND m.user_id=$3 AND (g.document_id IS NULL OR g.document_id=$1)
+         AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp() AND $7::timestamptz>clock_timestamp()
+       ON CONFLICT(document_id,session_id) DO UPDATE SET label=excluded.label,activity=excluded.activity,
+         cursor=excluded.cursor,cursor_version=document_presence.cursor_version+1,updated_at=excluded.updated_at,expires_at=excluded.expires_at`,
+      [
+        id,
+        identity.principal,
+        identity.userId,
+        identity.name,
+        activity,
+        cursor ? JSON.stringify(cursor) : null,
+        new Date(identity.expiresAt),
+        identity.grantId,
+      ],
+    );
+  }
+  async authorizeAgent(
+    client: Pick<PoolClient, "query">,
+    identity: Identity,
+    scope: string,
+    locked = false,
+  ) {
+    const {
+      rows: [grant],
+    } = await client.query(
+      `SELECT * FROM agent_grants WHERE id=$1 AND user_id=$2 ${locked ? "FOR SHARE" : ""}`,
+      [identity.grantId, identity.userId],
+    );
+    const {
+      rows: [clock],
+    } = await client.query("SELECT clock_timestamp() AS now");
+    if (identity.expiresAt <= new Date(clock.now).getTime())
+      fail(401, "credential_expired", "Your credential expired.");
+    if (
+      !grant ||
+      grant.revoked_at ||
+      new Date(grant.expires_at) <= new Date(clock.now) ||
+      !grant.scopes.includes(scope) ||
+      !identity.scopes.includes(scope)
+    )
+      fail(
+        403,
+        "grant_denied",
+        "Agent permission is missing, expired, or revoked.",
+      );
+    return grant;
+  }
   async authorize(
     client: Pick<PoolClient, "query">,
     id: string,
@@ -62,35 +126,12 @@ export class DocumentService {
     if (identity.expiresAt <= Number(now.now))
       fail(401, "credential_expired", "Your credential expired.");
     if (identity.kind === "agent") {
-      const {
-        rows: [grant],
-      } = await client.query(
-        `SELECT *, expires_at>clock_timestamp() AS valid FROM agent_grants
-        WHERE document_id=$1 AND user_id=$2 AND ${identity.grantId ? "id=$3" : "oauth_client_id=$3"} ${locked ? "FOR SHARE" : ""}`,
-        [id, identity.userId, identity.grantId ?? identity.oauthClientId],
-      );
-      // FOR SHARE can wait behind revocation. Recheck wall-clock deadlines
-      // after the grant lock, including the access token's shorter lifetime.
-      if (locked) {
-        const {
-          rows: [clock],
-        } = await client.query("SELECT clock_timestamp() AS now");
-        if (identity.expiresAt <= clock.now.getTime())
-          fail(401, "credential_expired", "Your credential expired.");
-        if (grant && new Date(grant.expires_at) <= clock.now)
-          fail(403, "grant_denied", "Agent permission expired.");
-      }
-      if (
-        !grant ||
-        grant.revoked_at ||
-        !grant.valid ||
-        !grant.scopes.includes(scope) ||
-        !identity.scopes.includes(scope)
-      )
+      const grant = await this.authorizeAgent(client, identity, scope, locked);
+      if (grant.document_id !== null && grant.document_id !== id)
         fail(
           403,
           "grant_denied",
-          "Agent permission is missing, expired, or revoked.",
+          "This connection is limited to another document.",
         );
       return {
         role: membership.role,
@@ -128,21 +169,106 @@ export class DocumentService {
   }
   async list(identity: Identity): Promise<DocumentInfo[]> {
     if (identity.kind !== "person")
-      fail(403, "agent_route", "Use the document-scoped MCP tools.");
+      fail(403, "agent_route", "Use list_documents through MCP.");
     const { rows } = await this.db.query(
       `SELECT d.*,m.role FROM documents d JOIN document_members m ON m.document_id=d.id WHERE m.user_id=$1 ORDER BY d.updated_at DESC`,
       [identity.userId],
     );
     return rows;
   }
-  async create(identity: Identity, title: string, markdown: string) {
-    if (identity.kind !== "person")
-      fail(403, "agent_route", "Only people can create documents.");
-    const doc = createDocument(markdown);
+  async discover(identity: Identity, input: unknown) {
+    const args = listInput.parse(input);
+    const grant = await this.authorizeAgent(this.db, identity, "read");
+    const { rows } = await this.db.query(
+      `SELECT d.id,d.title,m.role,d.head AS revision,d.updated_at
+       FROM documents d JOIN document_members m ON m.document_id=d.id
+       WHERE m.user_id=$1 AND ($2::uuid IS NULL OR d.id=$2)
+         AND ($3::uuid IS NULL OR d.id>$3) AND strpos(lower(d.title),lower($4))>0
+       ORDER BY d.id LIMIT $5`,
+      [
+        identity.userId,
+        grant.document_id,
+        args.after ?? null,
+        args.query,
+        args.limit + 1,
+      ],
+    );
+    return {
+      documents: rows.slice(0, args.limit),
+      next_cursor: rows.length > args.limit ? rows[args.limit - 1].id : null,
+    };
+  }
+  async createAgent(identity: Identity, input: unknown) {
+    const args = createInput.parse(input);
+    return this.create(identity, args.title, args.markdown, args.request_id);
+  }
+  async create(
+    identity: Identity,
+    title: string,
+    markdown: string,
+    requestId?: string,
+  ) {
+    if (identity.kind === "agent" && !requestId)
+      fail(400, "invalid_request", "Document creation requires a request ID.");
+    const requestHash = hash(canonical({ title, markdown }));
+    let doc: Y.Doc;
+    try {
+      doc = createDocument(markdown);
+    } catch (error) {
+      fail(
+        400,
+        "invalid_markdown",
+        error instanceof Error ? error.message : "Unsupported Markdown.",
+      );
+    }
     try {
       const bytes = Y.encodeStateAsUpdate(doc);
-      const rendered = renderDocument(doc);
+      let rendered: string;
+      try {
+        rendered = renderDocument(doc);
+      } catch (error) {
+        fail(
+          400,
+          "invalid_markdown",
+          error instanceof Error ? error.message : "Unsupported Markdown.",
+        );
+      }
       return transaction(this.db, async (client) => {
+        if (identity.kind === "agent") {
+          // Serialize retries before acquiring the grant lock. Revocation and
+          // expiry are rechecked after waiting, before either replay or insert.
+          await client.query(
+            "SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))",
+            [identity.principal, requestId],
+          );
+          const grant = await this.authorizeAgent(
+            client,
+            identity,
+            "create",
+            true,
+          );
+          if (grant.document_id !== null)
+            fail(
+              403,
+              "grant_denied",
+              "Document connections cannot create documents.",
+            );
+          const {
+            rows: [receipt],
+          } = await client.query(
+            "SELECT request_hash,result FROM document_creation_receipts WHERE principal=$1 AND request_id=$2",
+            [identity.principal, requestId],
+          );
+          if (receipt) {
+            if (receipt.request_hash !== requestHash)
+              fail(
+                409,
+                "request_id_reused",
+                "Request ID was already used with different input.",
+              );
+            return receipt.result as DocumentInfo;
+          }
+        }
         const {
           rows: [document],
         } = await client.query(
@@ -157,7 +283,15 @@ export class DocumentService {
           "INSERT INTO document_snapshots VALUES($1,0,$2,$3,$4)",
           [document.id, SCHEMA_VERSION, Buffer.from(bytes), rendered],
         );
-        return { ...document, role: "owner" } as DocumentInfo;
+        const result = { ...document, role: "owner" } as DocumentInfo;
+        if (identity.kind === "agent")
+          await this.agentPresence(client, document.id, identity, "Created");
+        if (identity.kind === "agent")
+          await client.query(
+            "INSERT INTO document_creation_receipts(principal,request_id,request_hash,document_id,result) VALUES($1,$2,$3,$4,$5)",
+            [identity.principal, requestId, requestHash, document.id, result],
+          );
+        return result;
       });
     } finally {
       doc.destroy();
@@ -262,6 +396,15 @@ export class DocumentService {
     const args = readInput.parse(input);
     const { doc, document } = await this.load(args.document_id, identity);
     try {
+      await this.agentPresence(
+        this.db,
+        args.document_id,
+        identity,
+        "Reading",
+        args.mode === "blocks"
+          ? blockCursor(doc, args.document_id, args.refs)
+          : null,
+      );
       const base = {
         document_id: args.document_id,
         title: document.title,
@@ -383,7 +526,12 @@ export class DocumentService {
     prepare: (
       doc: Y.Doc,
       head: number,
-    ) => { draft: Y.Doc; update: Uint8Array | null; unchanged: boolean },
+    ) => {
+      draft: Y.Doc;
+      update: Uint8Array | null;
+      unchanged: boolean;
+      cursor?: CursorSelection | null;
+    },
     retry = true,
   ) {
     const initial = await this.authorize(this.db, id, identity, scope);
@@ -444,6 +592,13 @@ export class DocumentService {
             );
           }
           const writeResult: WriteResult = { revision, unchanged };
+          await this.agentPresence(
+            client,
+            id,
+            identity,
+            "Edited",
+            prepared!.cursor ?? null,
+          );
           await client.query(
             "INSERT INTO write_receipts(document_id,principal,request_id,request_hash,result) VALUES($1,$2,$3,$4,$5)",
             [id, auth.principal, requestId, requestHash, writeResult],

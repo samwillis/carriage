@@ -44,7 +44,8 @@ const params = new URLSearchParams({
   client_id: registration.client_id,
   redirect_uri: redirect,
   response_type: "code",
-  scope: "document:read document:edit document:write offline_access",
+  scope:
+    "document:read document:edit document:write document:create offline_access",
   state,
   resource: `${base}/mcp`,
   code_challenge: createHash("sha256").update(verifier).digest("base64url"),
@@ -91,7 +92,7 @@ try {
   await page.goto(`${metadata.authorization_endpoint}?${params}`);
   await page
     .getByLabel("Email address")
-    .or(page.getByRole("heading", { name: "Choose a document" }))
+    .or(page.getByRole("heading", { name: "Connect your account" }))
     .waitFor({ timeout: 30_000 });
   if (await page.getByLabel("Email address").count()) {
     await page.getByLabel("Email address").fill(credentials.email);
@@ -101,18 +102,10 @@ try {
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
   }
   await page
-    .getByRole("heading", { name: "Choose a document" })
+    .getByRole("heading", { name: "Connect your account" })
     .waitFor({ timeout: 30_000 });
-  await page
-    .locator("select option")
-    .nth(1)
-    .waitFor({ state: "attached", timeout: 30_000 });
-  const id =
-    document.id ??
-    new URL(document.url).searchParams.get("doc") ??
-    (await page.locator("select option").nth(1).getAttribute("value"));
+  const id = document.id ?? new URL(document.url).searchParams.get("doc");
   document.id = id;
-  await page.getByRole("combobox").selectOption(id);
   await page.getByRole("button", { name: "Continue to approval" }).click();
   await page
     .getByRole("button", { name: "Allow connection" })
@@ -129,7 +122,7 @@ try {
     { mode: 0o600 },
   );
   console.log(
-    "Neon Auth login, document selection, consent and callback: passed",
+    "Neon Auth login, account approval, consent and callback: passed",
   );
 } catch (error) {
   const pages = browser.contexts()[0]?.pages();
@@ -205,12 +198,57 @@ try {
       "OAuth document read failed: " + JSON.stringify(result.content),
     );
   console.log("OAuth-authenticated MCP read: passed");
+  const listing = await client.callTool({
+    name: "list_documents",
+    arguments: {},
+  });
+  if (
+    listing.isError ||
+    !JSON.parse(listing.content[0].text).documents.some(
+      (d) => d.id === document.id,
+    )
+  )
+    throw new Error("OAuth account discovery failed");
+  const created = await client.callTool({
+    name: "create_document",
+    arguments: {
+      request_id: crypto.randomUUID(),
+      title: "OAuth account create smoke",
+      markdown: "Created through OAuth.",
+    },
+  });
+  if (created.isError) throw new Error("OAuth document creation failed");
+  const createdId = JSON.parse(created.content[0].text).document_id;
+  try {
+    const readNew = await client.callTool({
+      name: "read_document",
+      arguments: { document_id: createdId },
+    });
+    if (
+      readNew.isError ||
+      !JSON.parse(readNew.content[0].text).markdown.includes(
+        "Created through OAuth",
+      )
+    )
+      throw new Error("OAuth read of newly created document failed");
+    console.log(
+      "OAuth account discovery, creation and second-document read: passed",
+    );
+  } finally {
+    const { Pool } = await import("pg");
+    const cleanup = new Pool({ connectionString: process.env.DATABASE_URL });
+    try {
+      await cleanup.query("DELETE FROM documents WHERE id=$1", [createdId]);
+    } finally {
+      await cleanup.end();
+    }
+  }
 } finally {
   await client.close();
 }
 const { token: human } = await testIdentity(base),
   headers = { Authorization: `Bearer ${human}` };
-const grants = await fetch(`${base}/api/documents/${document.id}/grants`, {
+const grants = await fetch(`${base}/api/grants`, {
   headers,
 }).then((r) => r.json());
 const grant = grants.find((g) => g.oauth_client_id === registration.client_id);
@@ -237,7 +275,7 @@ try {
   throw new Error("Revoked OAuth grant refreshed");
 } catch (error) {
   if (error.message === "Revoked OAuth grant refreshed") throw error;
-  console.log("Document grant revokes OAuth access and refresh: passed");
+  console.log("Account grant revokes OAuth access and refresh: passed");
 }
 try {
   await exchange({

@@ -76,7 +76,7 @@ export async function authenticate(
     fail(
       401,
       "invalid_agent_credential",
-      "Connect with a document token or an OAuth agent grant.",
+      "Connect with an agent access token or OAuth.",
     );
   }
   try {

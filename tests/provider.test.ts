@@ -82,6 +82,12 @@ beforeEach(() => {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   });
+  vi.stubGlobal("document", {
+    visibilityState: "visible",
+    hasFocus: () => true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
   const doc = createDocument("# Status test\n\nA paragraph.");
@@ -134,6 +140,49 @@ afterEach(() => {
 });
 
 describe("document connection and save status", () => {
+  it("does not restore departed presence until a page returns from the browser cache", async () => {
+    await start();
+    const event = (name: string) =>
+      vi
+        .mocked(window.addEventListener)
+        .mock.calls.find(([type]) => type === name)![1] as () => void;
+    event("pagehide")();
+    await settle();
+    const afterLeave = calls("/presence");
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(calls("/presence")).toBe(afterLeave);
+    event("pageshow")();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(calls("/presence")).toBe(afterLeave + 1);
+  });
+  it("reports typing promptly, clears it after a pause, and marks hidden sessions idle", async () => {
+    await start();
+    editLocally();
+    await vi.advanceTimersByTimeAsync(250);
+    const payload = () =>
+      JSON.parse(
+        mocks.api.mock.calls
+          .filter(([path]) => path.endsWith("/presence"))
+          .at(-1)![2].body,
+      );
+    expect(payload().activity).toBe("Editing");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(payload().activity).toBe("Viewing");
+    vi.stubGlobal("document", {
+      visibilityState: "hidden",
+      hasFocus: () => false,
+      removeEventListener: vi.fn(),
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(payload()).toMatchObject({ activity: "Idle", cursor: null });
+    provider.close();
+    expect(payload().leaving).toBe(true);
+    expect(
+      mocks.api.mock.calls
+        .filter(([path]) => path.endsWith("/presence"))
+        .at(-1)![2].keepalive,
+    ).toBe(true);
+  });
   it("renews all capabilities before their 60-second expiry without reconnecting", async () => {
     await start();
     expect(calls("/live")).toBe(1);

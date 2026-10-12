@@ -46,6 +46,7 @@ export const oauthOptions: OAuthOptions<string[]> = {
     "document:read",
     "document:edit",
     "document:write",
+    "document:create",
     "offline_access",
   ],
   resources: [resource],
@@ -74,7 +75,7 @@ export const oauthOptions: OAuthOptions<string[]> = {
       );
       if (!grant)
         throw new APIError("FORBIDDEN", {
-          message: "Document approval expired.",
+          message: "Agent approval expired.",
         });
       return grant.id;
     },
@@ -82,7 +83,7 @@ export const oauthOptions: OAuthOptions<string[]> = {
   customAccessTokenClaims: async ({ referenceId, user }) => {
     if (!referenceId || !user)
       throw new APIError("FORBIDDEN", {
-        message: "A document grant is required.",
+        message: "An agent grant is required.",
       });
     const {
       rows: [grant],
@@ -92,7 +93,7 @@ export const oauthOptions: OAuthOptions<string[]> = {
     );
     if (!grant)
       throw new APIError("FORBIDDEN", {
-        message: "Document approval expired or was revoked.",
+        message: "Agent approval expired or was revoked.",
       });
     return { grant_id: grant.id };
   },
@@ -216,11 +217,7 @@ export async function handleOAuth(request: Request) {
   if (params) headers.set(flowHeader, flowHash(params));
   return oauth.handler(new Request(request, { headers }));
 }
-export async function createLoginTicket(
-  identity: Identity,
-  documentId: string,
-  query: string,
-) {
+export async function createLoginTicket(identity: Identity, query: string) {
   if (!(await verifyOAuthQueryParams(query, oauthSecret!)))
     fail(400, "invalid_oauth", "OAuth request is invalid or expired.");
   const params = new URLSearchParams(query);
@@ -231,20 +228,33 @@ export async function createLoginTicket(
     .filter((scope) => scope.startsWith("document:"))
     .map((scope) => scope.slice(9));
   if (!requested.includes("read")) requested.push("read");
-  const { documents } = await import("./documents");
   const ticket = secretToken("ticket");
   await transaction(pool, async (client) => {
-    await client.query("SELECT id FROM documents WHERE id=$1 FOR UPDATE", [
-      documentId,
-    ]);
-    for (const scope of requested)
-      await documents.authorize(client, documentId, identity, scope, true);
+    if (identity.kind !== "person" || identity.expiresAt <= Date.now())
+      fail(401, "unauthorized", "Sign in to connect an agent.");
+    if (
+      requested.some(
+        (scope) => !["read", "edit", "write", "create"].includes(scope),
+      )
+    )
+      fail(400, "invalid_oauth", "Unknown agent permission.");
+    const {
+      rows: [clientInfo],
+    } = await client.query(
+      'SELECT name FROM oauth_clients WHERE "clientId"=$1',
+      [clientId],
+    );
     const {
       rows: [grant],
     } = await client.query(
-      `INSERT INTO agent_grants(document_id,user_id,label,oauth_client_id,scopes,expires_at)
-      VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '30 days') RETURNING id`,
-      [documentId, identity.userId, "Hosted agent", clientId, requested],
+      `INSERT INTO agent_grants(user_id,label,oauth_client_id,scopes,expires_at)
+      VALUES($1,$2,$3,$4,clock_timestamp()+interval '30 days') RETURNING id`,
+      [
+        identity.userId,
+        clientInfo?.name?.slice(0, 80) || "Hosted agent",
+        clientId,
+        requested,
+      ],
     );
     await client.query(
       "INSERT INTO oauth_login_tickets(token_hash,user_id,name,grant_id,oauth_query,expires_at) VALUES($1,$2,$3,$4,$5,clock_timestamp()+interval '2 minutes')",
@@ -264,12 +274,12 @@ export async function verifyOAuthIdentity(token: string): Promise<Identity> {
     [payload.grant_id, payload.sub],
   );
   if (!grant || grant.revoked_at || !grant.valid)
-    fail(401, "invalid_grant", "Document approval was revoked.");
+    fail(401, "invalid_grant", "Agent approval was revoked.");
   if (payload.client_id !== grant.oauth_client_id)
     fail(
       401,
       "invalid_grant",
-      "OAuth client does not match the document approval.",
+      "OAuth client does not match the agent approval.",
     );
   const scopes = String(payload.scope ?? "")
     .split(" ")
