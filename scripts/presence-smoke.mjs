@@ -1,4 +1,4 @@
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import { testIdentity } from "./test-auth.mjs";
@@ -38,12 +38,7 @@ try {
     other = await second.newPage();
   await page.goto(`${base}/?doc=${doc.id}`);
   await page.getByTestId("document-editor").waitFor({ timeout: 30000 });
-  await page
-    .getByRole("group", {
-      name: "1 connected session, including you",
-      exact: true,
-    })
-    .waitFor();
+  await expect(page.locator(".presence")).toBeHidden();
   await other.goto(`${base}/?doc=${doc.id}`);
   await other.getByTestId("document-editor").waitFor({ timeout: 30000 });
   for (const tab of [page, other]) {
@@ -86,12 +81,7 @@ try {
   });
   console.log("Presence stays visible on mobile: passed.");
   await second.close();
-  await page
-    .getByRole("group", {
-      name: "1 connected session, including you",
-      exact: true,
-    })
-    .waitFor({ timeout: 65000 });
+  await expect(page.locator(".presence")).toBeHidden({ timeout: 65000 });
   console.log(
     "Closed browser expires from presence while the remaining browser renews: passed.",
   );

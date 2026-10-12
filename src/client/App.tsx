@@ -11,8 +11,6 @@ import {
   Code2,
   Download,
   Check,
-  Command,
-  ChevronDown,
   WifiOff,
   PanelLeft,
   LogOut,
@@ -33,7 +31,7 @@ import { DocumentProvider } from "./provider";
 import { WritingEditor, format, type Format } from "./editor";
 import { renderDocument } from "../shared/codec";
 import type { DocumentInfo } from "../shared/contracts";
-const welcome = `# A little space for big ideas\n\nGood writing starts with a conversation. This is a shared place to think out loud, find the right words, and make something together.\n\n## Make it yours\n\nInvite a collaborator, bring an agent, or just start writing. Everyone works on the same document, and your changes find their way here in real time.\n\n- Write with Markdown shortcuts\n- Share a link with your team\n- Connect an agent to help you edit\n\n> The best ideas rarely arrive fully formed. Leave a little room in the margin.\n`;
+const welcome = `# Getting started\n\n- Open this document in another window to try live editing.\n- Use Share to invite someone.\n- Use Connect agent to let an agent read or edit this document.\n\nStart writing here.\n`;
 export function App() {
   const [session, setSession] = useState<Session | null>(null),
     [loaded, setLoaded] = useState(false),
@@ -101,16 +99,9 @@ export function App() {
           margin
           <span className="brand-dot" />
         </a>
-        <button className="workspace-label" onClick={() => setSidebar(false)}>
-          <span className="workspace-icon">
-            {session.name.slice(0, 1).toUpperCase()}
-          </span>
-          {session.name.split(" ")[0]}’s workspace
-          <ChevronDown size={14} />
-        </button>
         <button className="new-document" onClick={() => setDialog(true)}>
           <Plus size={17} />
-          New document<span>⌘ N</span>
+          New document
         </button>
         <label className="search">
           <Search size={15} />
@@ -121,9 +112,6 @@ export function App() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <div className="sidebar-section">
-          YOUR DOCUMENTS <span>{documents.length}</span>
-        </div>
         <nav>
           {documents
             .filter((d) => d.title.toLowerCase().includes(query.toLowerCase()))
@@ -148,20 +136,6 @@ export function App() {
             ) && <p className="sidebar-empty">No documents found.</p>}
         </nav>
         <div className="sidebar-bottom">
-          <div className="neon-card">
-            <span className="tiny-label">BUILT TOGETHER</span>
-            <p>
-              A shared page.
-              <br />A thousand possibilities.
-            </p>
-            <a
-              href="https://neon.tech/docs/realtime"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Powered by Neon <ArrowUpRight size={14} />
-            </a>
-          </div>
           <button
             className="profile"
             onClick={() =>
@@ -172,10 +146,7 @@ export function App() {
             }
           >
             <span className="avatar self">{session.name.slice(0, 1)}</span>
-            <span>
-              {session.name}
-              <small>Personal workspace</small>
-            </span>
+            <span>{session.name}</span>
             <LogOut size={16} />
           </button>
         </div>
@@ -205,13 +176,8 @@ export function App() {
           />
         ) : (
           <div className="empty-state">
-            <span className="eyebrow">YOUR NEXT IDEA STARTS HERE</span>
-            <h1>
-              Leave room
-              <br />
-              for possibility.
-            </h1>
-            <p>A calm place to write, with people and agents by your side.</p>
+            <h1>No documents yet</h1>
+            <p>Create a document to start writing.</p>
             <button className="primary" onClick={() => setDialog(true)}>
               <Plus size={16} />
               Create your first document
@@ -220,11 +186,7 @@ export function App() {
         )}
       </main>
       {dialog && (
-        <Modal
-          title="A fresh page"
-          subtitle="Give your next idea a place to live."
-          onClose={() => setDialog(false)}
-        >
+        <Modal title="New document" onClose={() => setDialog(false)}>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -304,7 +266,6 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
           <span className="brand-dot" />
         </a>
         <div>
-          <span className="eyebrow">THINK OUT LOUD. WRITE TOGETHER.</span>
           <h1>
             Great ideas
             <br />
@@ -318,20 +279,22 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
             and the agents that help you get there.
           </p>
         </div>
-        <span className="story-footer">
-          POSTGRES AT HEART · NEON IN REAL TIME
-        </span>
-        <div className="orbit orbit-one" />
-        <div className="orbit orbit-two" />
+        <a
+          className="story-footer"
+          href="https://neon-next-git-thruflo-realtime-3-integration-neondatabase.vercel.app/docs/realtime/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Neon Realtime demo <ArrowUpRight size={14} />
+        </a>
       </div>
       <div className="login-form">
         <div className="login-box">
-          <span className="eyebrow">YOUR SHARED WRITING SPACE</span>
-          <h2>{register ? "Start something good." : "Welcome back."}</h2>
+          <h2>{register ? "Create an account" : "Sign in"}</h2>
           <p>
             {register
-              ? "Make room for your next idea."
-              : "Your words are right where you left them."}
+              ? "Save and share your documents."
+              : "Open your documents."}
           </p>
           <form
             onSubmit={(e) => {
@@ -383,11 +346,7 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
               </p>
             )}
             <button className="primary" disabled={busy}>
-              {busy
-                ? "Opening…"
-                : register
-                  ? "Create your account"
-                  : "Enter your workspace"}
+              {busy ? "Opening…" : register ? "Create your account" : "Sign in"}
               <ArrowUpRight size={17} />
             </button>
           </form>
@@ -399,9 +358,6 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
               </button>
             </p>
           )}
-          <div className="auth-footnote">
-            <span className="neon-mark">N</span>Secure sign-in with Neon Auth
-          </div>
         </div>
       </div>
     </div>
@@ -472,38 +428,52 @@ function Document({
   return (
     <div className="document-shell">
       <header className="document-header">
-        <div className="breadcrumbs">
-          <span>Workspace</span>
-          <span>/</span>
+        <div className="document-heading">
           <strong>{state.document?.title ?? "Opening document…"}</strong>
+          <div className="save-state">
+            <span
+              className={`status-dot ${state.pending ? "pending" : ""} ${state.paused ? "paused" : ""}`}
+            />
+            {!navigator.onLine && <WifiOff size={13} />} {state.status}
+            {state.document?.role === "viewer" && (
+              <span className="role-pill">View only</span>
+            )}
+          </div>
         </div>
         <div className="header-actions">
-          <div
-            className="presence"
-            role="group"
-            aria-label={`${people.length + 1} connected ${people.length ? "sessions" : "session"}, including you`}
-            title={[`${session.name} · you`, ...people.map(presenceLabel)].join(
-              "\n",
-            )}
-          >
-            <span className="presence-avatars">
-              {people.slice(0, 3).map((p) => (
-                <span
-                  className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
-                  key={p.session_id}
-                  title={presenceLabel(p)}
-                >
-                  {p.kind === "agent" ? <Bot size={14} /> : p.label.slice(0, 1)}
+          {people.length > 0 && (
+            <div
+              className="presence"
+              role="group"
+              aria-label={`${people.length + 1} connected ${people.length ? "sessions" : "session"}, including you`}
+              title={[
+                `${session.name} · you`,
+                ...people.map(presenceLabel),
+              ].join("\n")}
+            >
+              <span className="presence-avatars">
+                {people.slice(0, 3).map((p) => (
+                  <span
+                    className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
+                    key={p.session_id}
+                    title={presenceLabel(p)}
+                  >
+                    {p.kind === "agent" ? (
+                      <Bot size={14} />
+                    ) : (
+                      p.label.slice(0, 1)
+                    )}
+                  </span>
+                ))}
+                <span className="avatar self" title={`${session.name} · you`}>
+                  {session.name.slice(0, 1)}
                 </span>
-              ))}
-              <span className="avatar self" title={`${session.name} · you`}>
-                {session.name.slice(0, 1)}
               </span>
-            </span>
-            <span className="presence-count" aria-hidden="true">
-              {people.length + 1} here
-            </span>
-          </div>
+              <span className="presence-count" aria-hidden="true">
+                {people.length + 1} here
+              </span>
+            </div>
+          )}
           <button className="secondary" onClick={() => setModal("share")}>
             <Share2 size={15} />
             Share
@@ -512,46 +482,57 @@ function Document({
             <Bot size={15} />
             Connect agent
           </button>
+          <details
+            className="document-menu"
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget))
+                e.currentTarget.open = false;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.currentTarget.open = false;
+                e.currentTarget.querySelector("summary")?.focus();
+              }
+            }}
+          >
+            <summary
+              className="icon-button"
+              aria-label="Document actions"
+              title="Document actions"
+            >
+              <MoreHorizontal size={20} />
+            </summary>
+            <div
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest("button"))
+                  e.currentTarget.closest("details")!.open = false;
+              }}
+            >
+              <button
+                disabled={readOnly}
+                onClick={() => {
+                  setTitle(state.document?.title ?? "");
+                  setRename(true);
+                }}
+              >
+                Rename document
+              </button>
+              <button onClick={() => setSource(!source)}>
+                <Code2 size={15} />
+                {source ? "Back to editor" : "Markdown source"}
+              </button>
+              <button onClick={download}>
+                <Download size={15} />
+                Export Markdown
+              </button>
+              <button onClick={() => setInspector(!inspector)}>
+                <Activity size={15} />
+                {inspector ? "Hide sync details" : "Show live sync details"}
+              </button>
+            </div>
+          </details>
         </div>
       </header>
-      <div className="document-subheader">
-        <div className="save-state">
-          <span
-            className={`status-dot ${state.pending ? "pending" : ""} ${state.paused ? "paused" : ""}`}
-          />
-          {!navigator.onLine && <WifiOff size={13} />} {state.status}
-          {state.document?.role === "viewer" && (
-            <span className="role-pill">View only</span>
-          )}
-        </div>
-        <div className="view-controls">
-          <button
-            className={source ? "" : "active"}
-            onClick={() => setSource(false)}
-          >
-            <FileText size={14} />
-            Document
-          </button>
-          <button
-            className={source ? "active" : ""}
-            onClick={() => setSource(true)}
-          >
-            <Code2 size={14} />
-            Markdown
-          </button>
-          <span className="divider" />
-          <button
-            className={inspector ? "active" : ""}
-            onClick={() => setInspector(!inspector)}
-            title="Show live sync details"
-          >
-            <Activity size={15} />
-          </button>
-          <button onClick={download} title="Export Markdown">
-            <Download size={15} />
-          </button>
-        </div>
-      </div>
       {(state.error || message) && (
         <div
           className={`sync-notice ${state.paused ? "error" : ""}`}
@@ -592,27 +573,6 @@ function Document({
       )}
       <div className="writing-area">
         <div className="paper">
-          <div className="paper-meta">
-            <span className="eyebrow">A WORK IN PROGRESS</span>
-            <button
-              className="icon-button"
-              title="Rename document"
-              disabled={readOnly}
-              onClick={() => {
-                setTitle(state.document?.title ?? "");
-                setRename(true);
-              }}
-            >
-              <MoreHorizontal size={20} />
-            </button>
-          </div>
-          <div className="paper-title-row">
-            <span>{state.document?.title ?? "Opening…"}</span>
-            <span className="collaborative-label">
-              <span className="status-dot" />
-              Live document
-            </span>
-          </div>
           {!source && (
             <div className="format-toolbar">
               {(
@@ -636,7 +596,6 @@ function Document({
                   <Icon size={17} />
                 </button>
               ))}
-              <span>Markdown shortcuts welcome</span>
             </div>
           )}
           {state.ready ? (
@@ -644,7 +603,7 @@ function Document({
               {source ? (
                 <div className="source-view">
                   <div>
-                    <span>MARKDOWN SOURCE</span>
+                    <span>Markdown source</span>
                     <button
                       onClick={() =>
                         void navigator.clipboard.writeText(markdown)
@@ -668,30 +627,17 @@ function Document({
             <div className="document-loading">
               <span className="loading-line" />
               <span className="loading-line short" />
-              <p>Finding your latest words…</p>
+              <p>Loading document…</p>
             </div>
           )}
           <div className="paper-footer">
-            <span>
-              {words.toLocaleString()} words<span> · </span>
-              {Math.max(1, Math.ceil(words / 200))} min read
-            </span>
-            <span>
-              {state.pending ? (
-                `${state.pending} local batch${state.pending === 1 ? "" : "es"} pending`
-              ) : (
-                <>
-                  <Check size={13} />
-                  All changes saved
-                </>
-              )}
-            </span>
+            <span>{words.toLocaleString()} words</span>
           </div>
         </div>
         {inspector && (
           <aside className="inspector">
             <div>
-              <span className="eyebrow">UNDER THE SURFACE</span>
+              <h3>Sync details</h3>
               <button
                 className="icon-button"
                 onClick={() => setInspector(false)}
@@ -699,11 +645,7 @@ function Document({
                 <X size={16} />
               </button>
             </div>
-            <h3>Your words, in motion.</h3>
-            <p>
-              Edits become Postgres rows. Neon Realtime brings them to every
-              shared page.
-            </p>
+            <p>Edits are stored in Postgres and synced by Neon Realtime.</p>
             <dl>
               <dt>Committed revision</dt>
               <dd>{state.document?.head ?? "—"}</dd>
@@ -721,7 +663,7 @@ function Document({
               <dd>{state.document?.compaction_until ? "Running" : "Ready"}</dd>
             </dl>
             <div className="inspector-people">
-              <span className="tiny-label">ON THIS PAGE</span>
+              <span className="section-label">On this document</span>
               <p>
                 {session.name} <small>You</small>
               </p>
@@ -732,25 +674,17 @@ function Document({
                 </p>
               ))}
             </div>
-            <div className="tech-stack">
-              Milkdown + Yjs
-              <br />
-              Postgres + Neon Realtime
-              <br />
-              Neon Auth + Neon Functions
-            </div>
           </aside>
         )}
       </div>
       <footer className="workspace-footer">
-        <span>
-          <Command size={12} />
-          Made for thinking together
-        </span>
-        <span className="neon-credit">
-          <span className="status-dot" />
-          Powered by Neon Realtime
-        </span>
+        <a
+          href="https://neon-next-git-thruflo-realtime-3-integration-neondatabase.vercel.app/docs/realtime/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Neon Realtime demo <ArrowUpRight size={12} />
+        </a>
       </footer>
       {modal === "share" && (
         <ShareDialog
@@ -831,7 +765,6 @@ function Modal({
         >
           <X size={18} />
         </button>
-        <span className="eyebrow">MARGIN / TOGETHER</span>
         <h2>{title}</h2>
         {subtitle && <p>{subtitle}</p>}
         {children}
@@ -865,8 +798,8 @@ function ShareDialog({
   }, []);
   return (
     <Modal
-      title="Better with company."
-      subtitle="Invite someone into this document. They’ll sign in with their own Neon account."
+      title="Share document"
+      subtitle="Invite someone to view or edit this document."
       onClose={onClose}
     >
       {role === "owner" && (
@@ -904,7 +837,7 @@ function ShareDialog({
         </>
       )}
       <div className="dialog-list">
-        <span className="tiny-label">PEOPLE WITH ACCESS</span>
+        <span className="section-label">People with access</span>
         {members.map((m) => (
           <div key={m.user_id}>
             <span>
@@ -1006,8 +939,8 @@ function AgentDialog({
   }, []);
   return (
     <Modal
-      title="An extra pair of hands."
-      subtitle="Give an agent access to this page. It can read, suggest, and edit alongside you."
+      title="Connect agent"
+      subtitle="Give an agent access to this document."
       onClose={onClose}
     >
       <div className="tabs">
@@ -1027,16 +960,14 @@ function AgentDialog({
       {tab === "hosted" ? (
         <>
           <p className="dialog-copy">
-            Add this MCP server URL to your agent’s connectors. Sign in through
-            Neon Auth, choose this document, and approve the requested
-            permissions.
+            Add this URL to your agent’s MCP connectors. Sign in, choose a
+            document, and approve access.
           </p>
           <CopyBox value={config?.mcpUrl ?? "Loading…"} />
-          <span className="tiny-label">DOCUMENT ID</span>
+          <span className="section-label">Document ID</span>
           <CopyBox value={id} />
           <small className="hint">
-            The agent uses OAuth with PKCE. Approval stays scoped to one
-            document.
+            Access is limited to the document you choose.
           </small>
         </>
       ) : (
@@ -1108,14 +1039,14 @@ function AgentDialog({
                   2,
                 )}
               />
-              <span className="tiny-label">DOCUMENT ID</span>
+              <span className="section-label">Document ID</span>
               <CopyBox value={id} />
             </>
           )}
         </>
       )}
       <div className="dialog-list">
-        <span className="tiny-label">YOUR CONNECTIONS</span>
+        <span className="section-label">Connections</span>
         {grants
           .filter((g) => !g.revoked_at)
           .map((g) => (
@@ -1169,8 +1100,7 @@ function OAuthConnect({
         <span className="brand-dot" />
       </a>
       <section className="modal">
-        <span className="eyebrow">AGENT CONNECTION</span>
-        <h2>Choose a shared page.</h2>
+        <h2>Choose a document</h2>
         <p>
           You’re signed in as {session.name}. This agent is requesting: {scopes}
           .

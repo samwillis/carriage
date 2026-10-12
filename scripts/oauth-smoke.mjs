@@ -91,19 +91,17 @@ try {
   await page.goto(`${metadata.authorization_endpoint}?${params}`);
   await page
     .getByLabel("Email address")
-    .or(page.getByRole("heading", { name: "Choose a shared page." }))
+    .or(page.getByRole("heading", { name: "Choose a document" }))
     .waitFor({ timeout: 30_000 });
   if (await page.getByLabel("Email address").count()) {
     await page.getByLabel("Email address").fill(credentials.email);
     await page
       .getByLabel("Password", { exact: true })
       .fill(credentials.password);
-    await page
-      .getByRole("button", { name: "Enter your workspace", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
   }
   await page
-    .getByRole("heading", { name: "Choose a shared page." })
+    .getByRole("heading", { name: "Choose a document" })
     .waitFor({ timeout: 30_000 });
   await page
     .locator("select option")

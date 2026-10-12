@@ -52,9 +52,7 @@ try {
       await page.getByRole("alert").allTextContents(),
     );
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Enter your workspace", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
   }
   await page
     .getByRole("button", { name: "New document" })
@@ -98,13 +96,15 @@ try {
     .getByText("A real-time sentence from the first window.")
     .waitFor({ timeout: 30_000 });
   console.log("Two-window Realtime editing: passed");
+  await page.getByLabel("Document actions").click();
   await page.getByRole("button", { name: "Show live sync details" }).click();
   await page.screenshot({
     path: ".cache/editor-inspector.png",
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Show live sync details" }).click();
+  await page.getByLabel("Document actions").click();
+  await page.getByRole("button", { name: "Hide sync details" }).click();
   await page.screenshot({
     path: ".cache/editor-mobile.png",
     fullPage: true,

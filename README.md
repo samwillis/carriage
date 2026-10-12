@@ -2,6 +2,8 @@
 
 A collaborative Markdown editor for Neon Realtime. Milkdown edits a shared Yjs document; every accepted update is an insert in Postgres. Neon Realtime delivers those inserts to collaborators. Browser users sign in with Neon Auth. Agents use the same write service through MCP on Neon Functions.
 
+Margin is a working name. Existing Markdown editors [openprose/margin](https://github.com/openprose/margin) and [SZoloth/margin](https://github.com/SZoloth/margin) use the same name; choose a different launch name.
+
 The editor, API, OAuth provider, and MCP endpoint are deployed together on one Neon Function. The frontend is embedded at build time, so this demo does not need a separate hosting account.
 
 [Open the staging demo](https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build/) · [MCP endpoint](https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build/mcp)
