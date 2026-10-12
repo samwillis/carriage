@@ -2,11 +2,12 @@ import { chromium, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import { testIdentity } from "./test-auth.mjs";
-const base =
-  process.env.SMOKE_APP_URL ??
+const base = process.env.SMOKE_APP_URL ?? "https://carriage-neon.vercel.app";
+const apiBase =
+  process.env.SMOKE_API_URL ??
   "https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build";
-const { token } = await testIdentity(base);
-const response = await fetch(`${base}/api/documents`, {
+const { token } = await testIdentity(apiBase);
+const response = await fetch(`${apiBase}/api/documents`, {
   method: "POST",
   headers: {
     Authorization: `Bearer ${token}`,

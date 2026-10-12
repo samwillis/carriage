@@ -1,5 +1,7 @@
 # Use an agent with Carriage
 
+The editor is at [carriage-neon.vercel.app](https://carriage-neon.vercel.app/). The MCP server and OAuth provider run on Neon Functions; use the MCP URL shown in Agent connections. Existing MCP configurations continue to work after the frontend move.
+
 Open **Agent connections** in the sidebar to connect an agent to your Carriage account. Choose your app to see its setup instructions. ChatGPT and Claude connect through browser sign-in; the local-client guides create an account access token. The agent can find documents you own or that are shared with you, edit where your role allows it, and create documents if you approve that permission.
 
 For a specific document, open **Share → Work with an agent**. Copy its document ID or the ready-made prompt. The **Set up MCP connection** button opens the connection guide if you haven’t connected your app yet. A document ID identifies the document; it does not grant access.

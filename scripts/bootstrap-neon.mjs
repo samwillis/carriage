@@ -1,24 +1,41 @@
 import { execFileSync } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 const commit = "5e276fdb4114555eac89f6033b15e6ff5e9e7eb4";
+const sdkOnly = process.argv.includes("--sdk-only");
 const source =
-  process.argv[2] ?? "https://github.com/neondatabase/neon-pkgs.git";
+  process.argv.slice(2).find((arg) => arg !== "--sdk-only") ??
+  "https://github.com/neondatabase/neon-pkgs.git";
 const checkout = resolve(".cache/neon-pkgs");
 await mkdir(".cache", { recursive: true });
 function run(command, args, cwd = process.cwd()) {
   execFileSync(command, args, { cwd, stdio: "inherit" });
 }
-run("git", ["clone", "--no-checkout", source, checkout]);
+const exists = await stat(resolve(checkout, ".git")).catch((error) => {
+  if (error.code !== "ENOENT") throw error;
+});
+if (!exists) run("git", ["clone", "--no-checkout", source, checkout]);
+// Reuse Vercel's build cache but always build the pinned SDK revision.
 run("git", ["fetch", "origin", commit], checkout);
 run("git", ["checkout", "--detach", commit], checkout);
-run("corepack", ["pnpm", "install", "--frozen-lockfile"], checkout);
+run(
+  "corepack",
+  [
+    "pnpm",
+    "install",
+    "--frozen-lockfile",
+    ...(sdkOnly ? ["--ignore-scripts"] : []),
+  ],
+  checkout,
+);
 run(
   "corepack",
   [
     "pnpm",
     "--filter",
-    "neon...",
+    ...(sdkOnly
+      ? ["@neon/sdk...", "--filter", "@neon/config..."]
+      : ["neon..."]),
     "--filter",
     "@neon/realtime...",
     "--filter",
@@ -27,6 +44,12 @@ run(
   ],
   checkout,
 );
-run(process.execPath, ["scripts/local-sdk.mjs", checkout]);
-console.log(`Preview CLI: ${checkout}/packages/cli/dist/cli.js`);
-console.log("Run npm ci, then set NEON_CLI_PATH in .env.local.");
+run(process.execPath, [
+  "scripts/local-sdk.mjs",
+  checkout,
+  "--refresh-integrity",
+]);
+if (!sdkOnly) {
+  console.log(`Preview CLI: ${checkout}/packages/cli/dist/cli.js`);
+  console.log("Run npm ci, then set NEON_CLI_PATH in .env.local.");
+}

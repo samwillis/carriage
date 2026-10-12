@@ -6,16 +6,17 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { testIdentity } from "./test-auth.mjs";
 
-const base =
-  process.env.SMOKE_APP_URL ??
+const base = process.env.SMOKE_APP_URL ?? "https://carriage-neon.vercel.app";
+const apiBase =
+  process.env.SMOKE_API_URL ??
   "https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build";
-const { token } = await testIdentity(base);
+const { token } = await testIdentity(apiBase);
 const headers = {
   Authorization: `Bearer ${token}`,
   "Content-Type": "application/json",
 };
 async function api(path, body) {
-  const response = await fetch(base + path, {
+  const response = await fetch(apiBase + path, {
     headers,
     ...(body ? { method: "POST", body: JSON.stringify(body) } : {}),
   });
@@ -38,7 +39,7 @@ try {
     days: 1,
   });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
+    new StreamableHTTPClientTransport(new URL(`${apiBase}/mcp`), {
       requestInit: { headers: { Authorization: `Bearer ${grant.token}` } },
     }),
   );

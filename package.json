@@ -4,15 +4,15 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.18"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "node scripts/embed-client.mjs --ensure && node --env-file-if-exists=.env.local --import tsx --watch src/server/dev.ts",
+    "dev:api": "node --env-file-if-exists=.env.local --import tsx --watch src/server/dev.ts",
     "dev:web": "vite --host 127.0.0.1",
-    "build": "npm run typecheck && vite build && node scripts/embed-client.mjs",
-    "typecheck": "node scripts/embed-client.mjs --ensure && tsc --noEmit",
-    "test": "node scripts/embed-client.mjs --ensure && vitest run",
+    "build": "npm run typecheck && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
     "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
     "sdk:local": "node scripts/local-sdk.mjs",

@@ -5,12 +5,13 @@ import { Pool } from "pg";
 import * as Y from "yjs";
 import { decodeBase64, encodeBase64 } from "../src/shared/codec.ts";
 import { testIdentity } from "./test-auth.mjs";
-const base =
-  process.env.SMOKE_APP_URL ??
+const base = process.env.SMOKE_APP_URL ?? "https://carriage-neon.vercel.app";
+const apiBase =
+  process.env.SMOKE_API_URL ??
   "https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build";
-const { token } = await testIdentity(base);
+const { token } = await testIdentity(apiBase);
 async function api(path, body) {
-  const r = await fetch(base + path, {
+  const r = await fetch(apiBase + path, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -18,7 +19,9 @@ async function api(path, body) {
     ...(body ? { method: "POST", body: JSON.stringify(body) } : {}),
   });
   if (!r.ok)
-    throw new Error(`Test API ${r.status}: ${new URL(base + path).pathname}`);
+    throw new Error(
+      `Test API ${r.status}: ${new URL(apiBase + path).pathname}`,
+    );
   return r.json();
 }
 const storageState = JSON.parse(

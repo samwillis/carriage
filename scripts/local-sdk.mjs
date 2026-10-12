@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 
 const app = fileURLToPath(new URL("../", import.meta.url));
 const checkout = process.argv[2] ?? process.env.NEON_PKGS_CHECKOUT;
@@ -24,6 +25,10 @@ const manifest = JSON.parse(
 );
 const destination = resolve(app, ".sdk");
 await mkdir(destination, { recursive: true });
+const lockPath = resolve(app, "package-lock.json");
+const lock = process.argv.includes("--refresh-integrity")
+  ? JSON.parse(await readFile(lockPath, "utf8"))
+  : null;
 
 for (const [name, dependency] of Object.entries({
   ...manifest.dependencies,
@@ -87,9 +92,25 @@ for (const [name, dependency] of Object.entries({
       resolve(destination, filename),
       resolve(app, dependency.slice("file:".length)),
     );
+    if (lock) {
+      const entry = lock.packages[`node_modules/${name}`];
+      if (entry?.version !== metadata.version || entry?.resolved !== dependency)
+        throw new Error(`${name} does not match the locked SDK version.`);
+      // These tarballs are generated from a pinned source checkout. Build
+      // artifacts vary across platforms, so hash the actual local artifact.
+      // Registry package versions and integrity hashes remain untouched.
+      entry.integrity =
+        "sha512-" +
+        createHash("sha512")
+          .update(
+            await readFile(resolve(app, dependency.slice("file:".length))),
+          )
+          .digest("base64");
+    }
     console.log(`Prepared ${name}`);
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
 }
-console.log("Run npm install to install the local SDK packages.");
+if (lock) await writeFile(lockPath, JSON.stringify(lock, null, 2) + "\n");
+console.log("Run npm ci to install the local SDK packages.");

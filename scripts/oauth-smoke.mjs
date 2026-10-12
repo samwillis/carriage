@@ -7,6 +7,7 @@ import { testIdentity } from "./test-auth.mjs";
 const base =
   process.env.SMOKE_API_URL ??
   "https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build";
+const appUrl = process.env.SMOKE_APP_URL ?? "https://carriage-neon.vercel.app";
 const clientName = process.env.OAUTH_REUSE_SESSION
   ? "Margin OAuth smoke (second client)"
   : "Margin OAuth smoke";
@@ -104,6 +105,8 @@ try {
   await page
     .getByRole("heading", { name: "Connect your account" })
     .waitFor({ timeout: 30_000 });
+  if (new URL(page.url()).origin !== new URL(appUrl).origin)
+    throw new Error("OAuth approval did not use the frontend origin");
   const id = document.id ?? new URL(document.url).searchParams.get("doc");
   document.id = id;
   await page.getByRole("button", { name: "Continue to approval" }).click();
@@ -218,8 +221,11 @@ try {
     },
   });
   if (created.isError) throw new Error("OAuth document creation failed");
-  const createdId = JSON.parse(created.content[0].text).document_id;
+  const createdResult = JSON.parse(created.content[0].text);
+  const createdId = createdResult.document_id;
   try {
+    if (new URL(createdResult.url).origin !== new URL(appUrl).origin)
+      throw new Error("Agent-created document URL used the backend origin");
     const readNew = await client.callTool({
       name: "read_document",
       arguments: { document_id: createdId },

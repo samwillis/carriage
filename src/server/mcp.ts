@@ -11,7 +11,7 @@ import {
   listInput,
   createInput,
 } from "../shared/contracts";
-import { resource, apiBase } from "./oauth";
+import { resource, apiBase, appOrigin } from "./oauth";
 export async function handleMcp(request: Request) {
   let identity;
   try {
@@ -50,7 +50,7 @@ export async function handleMcp(request: Request) {
                 document_id: created.id,
                 title: (result as any).title,
                 revision: 0,
-                url: `${apiBase}/?doc=${created.id}`,
+                url: `${appOrigin}/?doc=${created.id}`,
               }),
             },
           ],

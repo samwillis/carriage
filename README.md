@@ -4,13 +4,13 @@ A collaborative Markdown editor for Neon Realtime. Milkdown edits a shared Yjs d
 
 Carriage is named after a typewriter carriage.
 
-The editor, API, OAuth provider, and MCP endpoint are deployed together on one Neon Function. The frontend is embedded at build time, so this demo does not need a separate hosting account.
+Vercel hosts the React/Vite frontend. The API, OAuth provider, MCP endpoint, and compaction run on Neon Functions. The browser connects directly to Neon Auth and Realtime.
 
-[Open the staging demo](https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build/) · [MCP endpoint](https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build/mcp)
+[Open Carriage](https://carriage-neon.vercel.app/) · [MCP endpoint](https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build/mcp)
 
 ## Run locally
 
-Requires Node 22.18+ and the unpublished Neon preview packages. The SDK and CLI are pinned to neon-pkgs commit `5e276fdb4114555eac89f6033b15e6ff5e9e7eb4` (Realtime environment/config/SDK integration). Build in an isolated checkout; the setup used here is `/private/tmp/colab-neon-pkgs-20261012`.
+Requires Node 24 and the unpublished Neon preview packages. The SDK and CLI are pinned to neon-pkgs commit `5e276fdb4114555eac89f6033b15e6ff5e9e7eb4` (Realtime environment/config/SDK integration). Build in an isolated checkout; the setup used here is `/private/tmp/colab-neon-pkgs-20261012`.
 
 ```sh
 # In this repository:
@@ -54,7 +54,29 @@ node --env-file=.env.local scripts/neon.mjs config plan
 node --env-file=.env.local scripts/neon.mjs deploy --no-env-pull --update-existing
 ```
 
-For a public deployment, set `APP_ORIGIN` and `API_BASE_URL` to the actual Function origin reported by the CLI, then redeploy. Add that origin to Neon Auth's trusted domains. `neon.ts` includes the application origin and local development origins in the Realtime allowlist. Do not guess a Function URL. A separate ignored deployment environment file lets local development keep its own ports and OAuth issuer.
+Set `APP_ORIGIN` to the Vercel frontend origin and `API_BASE_URL` to the actual Function origin reported by the CLI. Keep those values and server secrets in a separate ignored deployment file, such as `.cache/deploy.env`, so local development keeps its ports and OAuth issuer. Apply the backend configuration with that file. Add the frontend origin to Neon Auth’s trusted domains; `neon.ts` includes it in the Realtime allowlist. The old Function homepage redirects document and invite links to Vercel. The MCP endpoint and OAuth issuer remain on Neon.
+
+Vercel’s `vercel.json` builds the static frontend and rewrites frontend routes (including `/oauth/connect`) to `index.html`. Its install command builds the pinned unpublished SDK packages before `npm ci`, refreshing checksums for those generated tarballs on the build platform. Registry dependency versions and checksums stay locked. Only these public build variables belong in Vercel:
+
+| Variable                  | Value                       |
+| ------------------------- | --------------------------- |
+| `VITE_API_BASE_URL`       | Neon Function origin        |
+| `VITE_NEON_AUTH_BASE_URL` | Managed Neon Auth URL       |
+| `VITE_NEON_REALTIME_URL`  | Neon Realtime WebSocket URL |
+
+Never upload database credentials, `OAUTH_SECRET`, or the Realtime signing secret to Vercel. `.vercelignore` excludes local credential files, cached accounts, and SDK artifacts.
+
+`carriage.vercel.app` was already taken, so this project uses `carriage-neon.vercel.app`. Deploy from this checkout:
+
+```sh
+vercel link --project carriage
+# Configure the three public variables above in Vercel, then:
+vercel deploy --prod
+node --env-file=.cache/deploy.env scripts/neon.mjs config plan
+node --env-file=.cache/deploy.env scripts/neon.mjs deploy --no-env-pull --update-existing
+```
+
+GitHub auto-deployment requires the Vercel GitHub integration to have access to `sam-willis_data/carriage`. CLI deployment works independently of that integration. Preview origins need explicit Auth, API CORS and Realtime authorization before they can use the backend. Local production builds can use `node scripts/public-env.mjs .cache/deploy.env` to write the public browser configuration while retaining local development settings.
 
 ## Connect an agent
 
@@ -90,7 +112,7 @@ TEST_DATABASE_URL=postgres://... npm test  # also runs transaction/concurrency t
 npm run build
 ```
 
-The integration scripts under `scripts/*-smoke.*` exercise actual staging services. They use an ignored test account and cache; they are development harnesses, not application endpoints. Browser smoke checks produce desktop/mobile screenshots. MCP checks create and remove a temporary document and revoke their test grant.
+The integration scripts under `scripts/*-smoke.*` exercise actual staging services. Set `SMOKE_APP_URL` to the frontend origin and `SMOKE_API_URL` to the Neon Function origin. They use an ignored test account and cache; they are development harnesses, not application endpoints. Browser smoke checks produce desktop/mobile screenshots. MCP checks create and remove a temporary document and revoke their test grant.
 
 Supported content is common Markdown plus GFM lists/tables/strikethrough. HTML and unsafe link/image schemes are rejected. Mixed-format text ranges require separate operations or a guarded block replacement. Limits: 128 KiB Markdown, 1 MiB encoded Yjs state, 256 KiB per update, 32 agent operations, six CAS attempts. Concurrent edits in different blocks can retry internally; changes to the same guarded block return a target conflict.
 

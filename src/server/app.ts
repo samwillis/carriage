@@ -26,7 +26,6 @@ import {
 } from "./oauth";
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { handleMcp } from "./mcp";
-import { serveFrontend } from "./frontend";
 export const app = new Hono<{ Variables: { identity: Identity } }>();
 app.use(
   "*",
@@ -98,9 +97,13 @@ app.get("/health", (c) =>
     ),
   }),
 );
-app.get("/", (c) => serveFrontend("/"));
-app.get("/oauth/connect", (c) => serveFrontend("/oauth/connect"));
-app.get("/assets/*", (c) => serveFrontend(c.req.path));
+// Preserve existing document, invite and OAuth bookmarks after moving the UI.
+for (const path of ["/", "/oauth/connect"])
+  app.get(path, (c) => {
+    const target = new URL(path, appOrigin);
+    target.search = new URL(c.req.url).search;
+    return c.redirect(target.toString(), 307);
+  });
 app.get("/api/config", (c) =>
   c.json({
     authUrl: process.env.NEON_AUTH_BASE_URL ?? null,
