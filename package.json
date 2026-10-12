@@ -1,0 +1,62 @@
+{
+  "name": "neon-collaborative-markdown",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node scripts/embed-client.mjs --ensure && node --env-file-if-exists=.env.local --import tsx --watch src/server/dev.ts",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "npm run typecheck && vite build && node scripts/embed-client.mjs",
+    "typecheck": "node scripts/embed-client.mjs --ensure && tsc --noEmit",
+    "test": "node scripts/embed-client.mjs --ensure && vitest run",
+    "db:migrate": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
+    "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
+    "sdk:local": "node scripts/local-sdk.mjs",
+    "sdk:bootstrap": "node scripts/bootstrap-neon.mjs",
+    "env:public": "node scripts/public-env.mjs",
+    "format": "prettier --write src scripts tests *.json *.ts *.md"
+  },
+  "dependencies": {
+    "@better-auth/oauth-provider": "1.7.7",
+    "@hono/node-server": "2.0.4",
+    "@milkdown/kit": "7.22.2",
+    "@milkdown/react": "7.22.2",
+    "@modelcontextprotocol/sdk": "^1.25.0",
+    "@neon/config": "file:.sdk/neon-config.tgz",
+    "@neon/functions": "file:.sdk/neon-functions.tgz",
+    "@neon/realtime": "file:.sdk/neon-realtime.tgz",
+    "@neon/sdk": "file:.sdk/neon-sdk.tgz",
+    "@neondatabase/auth": "0.6.0-beta",
+    "better-auth": "1.7.7",
+    "hono": "^4.12.25",
+    "idb": "^8.0.3",
+    "jose": "^6.1.0",
+    "lucide-react": "^0.468.0",
+    "pg": "^8.16.3",
+    "prosemirror-markdown": "^1.13.2",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "y-prosemirror": "1.3.7",
+    "yjs": "^13.6.27",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.3.0",
+    "@types/pg": "^8.15.5",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "concurrently": "^9.2.1",
+    "prettier": "^3.6.2",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.4",
+    "vitest": "^3.2.4"
+  }
+}

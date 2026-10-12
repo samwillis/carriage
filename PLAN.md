@@ -1,6 +1,6 @@
 # Collaborative Markdown editor for Neon Realtime
 
-Status: reviewed draft implementation plan, 12 October 2026. Implementation has not started. Integration assumptions remain subject to the validation gates below.
+Status: implemented launch demo, 12 October 2026. Core flows are verified on Neon staging. This document records the design; README.md contains the current setup and operating limits.
 
 ## Outcome
 
@@ -36,17 +36,17 @@ Milkdown is a formatted Markdown editor. Exported Markdown may normalize source 
 
 ## Data model
 
-| Relation | Responsibilities |
-| --- | --- |
-| `documents` | Title, schema version, committed head, snapshot revision, pending count/bytes/age, compaction claim state |
-| `document_members` | User access with owner/editor/viewer roles |
-| `document_invites` | Application-level invite links, allowed role, expiry, revocation, and authenticated acceptance |
-| `document_snapshots` | One encoded Yjs state in `bytea`, Markdown, revision, and schema version per document |
-| `document_updates` | Document revision, immutable mutation ID, binary update, actor/delegating user, and timestamps |
-| `write_receipts` | Document/principal/request identity, canonical request hash, original committed result, retained independently of compacted update rows |
-| `document_presence` | One leased record per browser tab or agent session |
-| `agent_grants` | Approved documents, operation scopes, delegating user, expiry, and revocation |
-| OAuth storage | Clients, consent, codes, access/refresh credentials as required by the selected provider |
+| Relation             | Responsibilities                                                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `documents`          | Title, schema version, committed head, snapshot revision, pending count/bytes/age, compaction claim state                               |
+| `document_members`   | User access with owner/editor/viewer roles                                                                                              |
+| `document_invites`   | Application-level invite links, allowed role, expiry, revocation, and authenticated acceptance                                          |
+| `document_snapshots` | One encoded Yjs state in `bytea`, Markdown, revision, and schema version per document                                                   |
+| `document_updates`   | Document revision, immutable mutation ID, binary update, actor/delegating user, and timestamps                                          |
+| `write_receipts`     | Document/principal/request identity, canonical request hash, original committed result, retained independently of compacted update rows |
+| `document_presence`  | One leased record per browser tab or agent session                                                                                      |
+| `agent_grants`       | Approved documents, operation scopes, delegating user, expiry, and revocation                                                           |
+| OAuth storage        | Clients, consent, codes, access/refresh credentials as required by the selected provider                                                |
 
 Use primary keys and appropriate document/revision indexes. Keep snapshot blobs separate from frequently changing head/counter metadata. Store hashes of opaque credentials. Define update, document, bootstrap, and request limits during validation; supported fixtures must fit the pinned SDK's baseline/publication limits.
 
@@ -113,11 +113,11 @@ Use full encoded state updates for persisted snapshots, not `Y.snapshot()`. Bina
 
 ## Efficient agent editing
 
-| Tool | Contract |
-| --- | --- |
-| `read_document` | Return full Markdown, outline, or selected blocks, with durable revision, schema version, opaque references, and hashes. Support an unchanged response when the caller already has the current revision. |
-| `edit_document` | Apply an atomic batch of text replacements, block replacements, insertions, or deletions with request ID and operation-specific preconditions. Distinguish target conflict, retryable contention, invalid input, and access loss. |
-| `write_document` | Whole-document Markdown replacement with a required unchanged document revision. |
+| Tool             | Contract                                                                                                                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read_document`  | Return full Markdown, outline, or selected blocks, with durable revision, schema version, opaque references, and hashes. Support an unchanged response when the caller already has the current revision.                          |
+| `edit_document`  | Apply an atomic batch of text replacements, block replacements, insertions, or deletions with request ID and operation-specific preconditions. Distinguish target conflict, retryable contention, invalid input, and access loss. |
+| `write_document` | Whole-document Markdown replacement with a required unchanged document revision.                                                                                                                                                  |
 
 Prefer outline/section reads and narrow edits. Sentence edits guard the selected text and relevant formatting/context; block replacements guard the whole block. Retry disjoint changes internally when practical, while keeping total retries/time bounded; sustained unrelated typing can still cause retryable contention. Preconditions protect committed state. Browser edits that have not reached Postgres can later merge according to Yjs rules, including after a full replacement.
 
@@ -227,6 +227,22 @@ Exit: demonstrate two people editing, an agent making a targeted change, compact
 - Headless schema construction and the reconciliation adapter's supported operations.
 - Measured batching/lease thresholds, document/concurrency limits, contention budgets, and whether idle compaction recovery requires durable delivery.
 - Neon organization/project and frontend deployment target when implementation begins.
+
+## Implementation decisions and validation
+
+- The demo is named Margin. A single Neon Function hosts the built frontend, API, MCP, and OAuth endpoints. Infrastructure is in Sam’s staging organization: PG18, `aws-us-east-2`, project `frosty-hat-96438417`, branch `br-frosty-poetry-w25lx1wr`.
+- Preview SDK/CLI packages are pinned to `5e276fdb4114555eac89f6033b15e6ff5e9e7eb4`. Milkdown 7.22.2 and y-prosemirror 1.3.7 supply the browser and headless schema. Collaboration uses Yjs sync/undo plugins directly because this Milkdown kit has no packaged collaboration plugin.
+- Live SQL uses four separate unordered ACL queries; all four are accepted by staging Realtime. Bootstrap generation checks prevent a reset during hydration from marking an older response current.
+- Text operations require the whole target block’s hash as well as selected text. This guards formatting and context with a stronger precondition than the proposed sentence-only guard. Concurrent changes to another block retry; changes in the same block return a conflict. A mixed-format replacement must be split or use a block replacement.
+- Hosted connections use Better Auth OAuth provider 1.7.7, with server-owned default resource links for dynamic clients. Neon login crosses to OAuth with a one-time ticket and top-level navigation. Each new authorization request selects a document again, using a server-owned fingerprint of its client, redirect, scopes, state, resource, and PKCE parameters. Agent access verifies the client's binding to the document grant; access and refresh both check the live grant. MCP accepts agent credentials; human JWTs are reserved for the app API.
+- Presence uses viewer/agent records with 45-second leases, 15-second browser heartbeats, and server-adjusted expiry filtering. Cursor positions are deferred.
+- Write-driven defaults are 200 updates, 256 KiB, or 60 seconds of pending age, with a 30-second renewable fenced lease and three bounded passes. No scheduled idle compaction is required for this demo.
+- Fourteen codec/Postgres tests pass, including disjoint CAS races, durable receipts, no-ops, full-write conflicts, deleted anchors, overlap rejection, missing causal predecessors, stale compaction workers, revoked access, and access-token expiry while waiting for a grant lock.
+- Real service checks pass for two browser replicas, closed-window offline recovery, invitations to a second Neon Auth account, read-only viewers, Realtime membership removal, CLI MCP read/edit/write/retry/revocation, and concurrent person/agent edits with local-only undo. OAuth checks cover discovery, dynamic registration, Neon login, consent, PKCE, refresh, MCP read, access/refresh revocation, code replay rejection, and a second client in the same browser receiving its own document picker and correctly named consent.
+- A deployed 205-write test compacted through revision 200 and retained five later inserts; the persisted reconstruction and a live Realtime observer both matched the writer. This sequential test took about 38 seconds, including network and database work; it is not a concurrency capacity claim.
+- For a 300-paragraph, 53,010-byte Markdown sample (64,803-byte encoded Yjs state), ten local headless samples measured a median 10 ms block read and 5 ms targeted edit. The edit delta was 41 bytes. These measurements exclude database/network time and are a development baseline.
+
+Remaining launch checks: connect the public endpoint from each intended hosted product, decide production abuse limits, and validate capacity beyond the two-user demo. The offline test covers closure before upload and recovery; it does not exhaustively fault-inject every IndexedDB/network boundary. `waitUntil` recovery remains write-driven after a crash.
 
 ## References
 
