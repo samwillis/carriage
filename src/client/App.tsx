@@ -640,6 +640,8 @@ function Document({
             </div>
             <p>Edits are stored in Postgres and synced by Neon Realtime.</p>
             <dl>
+              <dt>Live connection</dt>
+              <dd>{navigator.onLine ? state.connection : "Offline"}</dd>
               <dt>Committed revision</dt>
               <dd>{state.document?.head ?? "—"}</dd>
               <dt>Snapshot revision</dt>

@@ -14,6 +14,7 @@ import {
 const REMOTE = Symbol("remote");
 export interface SyncState {
   ready: boolean;
+  connection: "Connecting" | "Connected" | "Reconnecting" | "Unavailable";
   status: string;
   pending: number;
   document: DocumentInfo | null;
@@ -28,6 +29,7 @@ export class DocumentProvider {
   presence: PresenceAwareness;
   state: SyncState = {
     ready: false,
+    connection: "Connecting",
     status: "Connecting",
     pending: 0,
     document: null,
@@ -50,6 +52,7 @@ export class DocumentProvider {
   private presenceAgain = false;
   private presenceLastSent = 0;
   private presenceSequence = 0;
+  private failedQueries = new Set<string>();
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
     return () => {
@@ -62,6 +65,13 @@ export class DocumentProvider {
     if (patch.presence)
       this.presence.sync(patch.presence, Date.now() + this.serverOffset);
     this.state = { ...this.state, ...patch };
+    // A local write cannot make a disconnected live feed appear healthy.
+    if (this.state.paused) this.state.status = "Paused";
+    else if (!navigator.onLine) this.state.status = "Offline";
+    else if (this.state.connection !== "Connected")
+      this.state.status = this.state.connection;
+    else if (this.failedQueries.size)
+      this.state.status = "Live query unavailable";
     for (const fn of this.listeners) fn();
   }
   constructor(
@@ -86,7 +96,7 @@ export class DocumentProvider {
       local = origin !== REMOTE;
     if (local) {
       this.editedAt = Date.now();
-      this.publish({ status: "Saving locally" });
+      this.publish({ status: "Saving…" });
     }
     this.persistence = this.persistence
       .then(async () => {
@@ -159,6 +169,7 @@ export class DocumentProvider {
     }
   }
   private online = () => {
+    void this.count();
     void this.heartbeat();
     void this.flush();
   };
@@ -167,12 +178,32 @@ export class DocumentProvider {
     this.client?.close();
     for (const fn of this.cleanups) fn();
     this.cleanups = [];
+    this.failedQueries.clear();
     const config = await api("/api/config");
     const sealed = await api(`/api/documents/${this.id}/live`, this.session);
     if (this.closed) return;
     this.client = createRealtimeClient({
       url: config.realtimeUrl,
-      logLevel: "warn",
+      logLevel: "info",
+      logger: (entry) => {
+        if (
+          entry.event === "connection_ready" ||
+          entry.event === "connection_recovered"
+        )
+          this.publish({
+            connection: "Connected",
+            status: this.state.ready ? "Syncing…" : "Connecting",
+          });
+        else if (entry.event === "connection_lost")
+          this.publish({ connection: "Reconnecting" });
+        else if (
+          entry.event === "connection_failed" ||
+          entry.event === "connection_reconnect_exhausted"
+        )
+          this.publish({ connection: "Unavailable", error: entry.message });
+        if (entry.level === "warn" || entry.level === "error")
+          console[entry.level](entry.message);
+      },
     });
     const subscriptions = ["snapshots", "updates", "metadata", "presence"].map(
       (key) => ({
@@ -247,9 +278,12 @@ export class DocumentProvider {
               : boot.document,
           error: null,
         });
+        const firstHydration = initial;
         initial = false;
         await this.count();
-        void this.heartbeat();
+        // A refreshed query baseline is still on the same live connection.
+        // Writing presence after every refresh can itself trigger more resets.
+        if (firstHydration) void this.heartbeat();
         void this.flush();
       } catch (error) {
         if (
@@ -259,7 +293,7 @@ export class DocumentProvider {
         )
           this.pause(error.message);
         else {
-          this.publish({ error: String(error), status: "Reconnecting" });
+          this.publish({ error: String(error), status: "Sync delayed" });
           bootstrapRetry = setTimeout(() => void hydrate(), 1500);
         }
       } finally {
@@ -290,6 +324,8 @@ export class DocumentProvider {
         if (this.closed) return;
         const previous = statuses.get(key);
         statuses.set(key, change.status);
+        if (change.status === "error") this.failedQueries.add(key);
+        else if (change.status === "live") this.failedQueries.delete(key);
         if (
           key !== "presence" &&
           change.status === "stale" &&
@@ -301,12 +337,6 @@ export class DocumentProvider {
             error: `${key}: ${change.error?.message ?? "Live query failed"}`,
             status: "Live query unavailable",
           });
-        if (change.error) {
-          this.publish({
-            error: change.error.message ?? "Live connection interrupted",
-            status: "Reconnecting",
-          });
-        }
         if (change.status === "live" && change.data) {
           if (key === "snapshots")
             for (const row of change.data)
@@ -343,8 +373,6 @@ export class DocumentProvider {
           (initial || previous !== "live")
         )
           void hydrate();
-        if (key !== "presence" && change.status === "stale")
-          this.publish({ status: "Reconnecting" });
       };
       if (key !== "updates")
         (
@@ -352,8 +380,8 @@ export class DocumentProvider {
         ).onChange(receive);
       else sub.onStateChange(receive);
     }
-    // Renew the four capabilities together. Resubscription installs fresh baselines;
-    // hydration closes any gap while retaining the local replica and durable queue.
+    // Sealed capabilities last 60 seconds. Renew together before expiry so the
+    // existing live queries can continue; hydration covers any recovery baseline.
     const refresh = setInterval(() => {
       if (this.closed || this.state.paused) return;
       void api(`/api/documents/${this.id}/live`, this.session)
@@ -368,9 +396,9 @@ export class DocumentProvider {
             [401, 403, 404].includes(error.status)
           )
             this.pause(error.message);
-          else this.publish({ status: "Reconnecting" });
+          else this.publish({ status: "Sync delayed" });
         });
-    }, 60_000);
+    }, 30_000);
     this.cleanups.push(() => clearInterval(refresh));
   }
   private cleanups: (() => void)[] = [];
@@ -453,7 +481,7 @@ export class DocumentProvider {
         else {
           retry = true;
           this.publish({
-            status: navigator.onLine ? "Reconnecting" : "Offline",
+            status: "Retrying save…",
             error:
               error instanceof Error ? error.message : "Connection interrupted",
           });
@@ -469,7 +497,7 @@ export class DocumentProvider {
       else {
         retry = true;
         this.publish({
-          status: "Reconnecting",
+          status: "Retrying save…",
           error:
             error instanceof Error ? error.message : "Recovery will retry.",
         });
