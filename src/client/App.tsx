@@ -444,6 +444,8 @@ function Document({
   const people = state.presence.filter(
     (p) => p.session_id !== provider.sessionId,
   );
+  const presenceLabel = (p: (typeof people)[number]) =>
+    `${p.label}${p.kind === "person" && p.user_id === session.userId ? " · another browser or tab" : ""} · ${p.activity}`;
   const words = markdown.trim() ? markdown.trim().split(/\s+/).length : 0;
   function download() {
     const url = URL.createObjectURL(
@@ -478,18 +480,28 @@ function Document({
         <div className="header-actions">
           <div
             className="presence"
-            title={people.map((p) => `${p.label} · ${p.activity}`).join("\n")}
+            role="group"
+            aria-label={`${people.length + 1} connected ${people.length ? "sessions" : "session"}, including you`}
+            title={[`${session.name} · you`, ...people.map(presenceLabel)].join(
+              "\n",
+            )}
           >
-            {people.slice(0, 3).map((p) => (
-              <span
-                className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
-                key={p.session_id}
-              >
-                {p.kind === "agent" ? <Bot size={14} /> : p.label.slice(0, 1)}
+            <span className="presence-avatars">
+              {people.slice(0, 3).map((p) => (
+                <span
+                  className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
+                  key={p.session_id}
+                  title={presenceLabel(p)}
+                >
+                  {p.kind === "agent" ? <Bot size={14} /> : p.label.slice(0, 1)}
+                </span>
+              ))}
+              <span className="avatar self" title={`${session.name} · you`}>
+                {session.name.slice(0, 1)}
               </span>
-            ))}
-            <span className="avatar self" title={`${session.name} · you`}>
-              {session.name.slice(0, 1)}
+            </span>
+            <span className="presence-count" aria-hidden="true">
+              {people.length + 1} here
             </span>
           </div>
           <button className="secondary" onClick={() => setModal("share")}>

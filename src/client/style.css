@@ -337,7 +337,17 @@ p {
 }
 .presence {
   display: flex;
+  align-items: center;
+  gap: 8px;
   padding-right: 8px;
+}
+.presence-avatars {
+  display: flex;
+}
+.presence-count {
+  color: var(--green);
+  font-size: 11px;
+  white-space: nowrap;
 }
 .presence .avatar + .avatar {
   margin-left: -7px;
@@ -1304,6 +1314,9 @@ p {
     width: 25px;
     height: 25px;
     font-size: 9px;
+  }
+  .presence-avatars {
+    display: none;
   }
   .document-subheader {
     padding: 0 17px;

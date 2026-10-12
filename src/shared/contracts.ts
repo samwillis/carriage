@@ -81,6 +81,7 @@ export interface Bootstrap {
 }
 export interface Presence {
   session_id: string;
+  user_id: string;
   label: string;
   kind: "person" | "agent";
   activity: string;

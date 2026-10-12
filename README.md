@@ -73,7 +73,7 @@ The browser keeps a full replica, journal, and immutable in-flight batch in Inde
 
 A committed write claims compaction at **200 updates**, **256 KiB**, or **60 seconds of pending age**. Age is evaluated on writes. A fixed cutoff, lease, and epoch let later appends proceed. Reconstruction and Markdown serialization happen outside the document lock. Publication verifies the epoch, source revision, and database wall-clock lease, then atomically publishes the snapshot and removes only incorporated updates. Workers renew leases and perform at most three passes. `waitUntil` is not durable delivery: a crashed idle worker is reclaimed on the next write.
 
-Presence is a leased Postgres record per browser session or agent grant, renewed by browser heartbeats and agent tool calls. Client clocks are adjusted from server time; expired rows disappear locally without a nonincremental `now()` predicate. This demo shows who is viewing or editing; it does not transmit cursor positions.
+Presence is a leased Postgres record per browser session or agent grant, renewed by browser heartbeats and agent tool calls. The header shows a connected-session count, avatars, and activity on hover. Separate browsers or tabs on the same account count separately and are labeled accordingly. Client clocks are adjusted from server time; expired rows disappear locally without a nonincremental `now()` predicate. This demo shows who is viewing or editing; it does not transmit cursor positions.
 
 ## Verification
 
