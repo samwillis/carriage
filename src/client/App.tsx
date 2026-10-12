@@ -428,109 +428,148 @@ function Document({
   return (
     <div className="document-shell">
       <header className="document-header">
-        <div className="document-heading">
-          <strong>{state.document?.title ?? "Opening document…"}</strong>
-          <div className="save-state">
-            <span
-              className={`status-dot ${state.pending ? "pending" : ""} ${state.paused ? "paused" : ""}`}
-            />
-            {!navigator.onLine && <WifiOff size={13} />} {state.status}
-            {state.document?.role === "viewer" && (
-              <span className="role-pill">View only</span>
-            )}
-          </div>
-        </div>
-        <div className="header-actions">
-          {people.length > 0 && (
-            <div
-              className="presence"
-              role="group"
-              aria-label={`${people.length + 1} connected ${people.length ? "sessions" : "session"}, including you`}
-              title={[
-                `${session.name} · you`,
-                ...people.map(presenceLabel),
-              ].join("\n")}
-            >
-              <span className="presence-avatars">
-                {people.slice(0, 3).map((p) => (
-                  <span
-                    className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
-                    key={p.session_id}
-                    title={presenceLabel(p)}
-                  >
-                    {p.kind === "agent" ? (
-                      <Bot size={14} />
-                    ) : (
-                      p.label.slice(0, 1)
-                    )}
-                  </span>
-                ))}
-                <span className="avatar self" title={`${session.name} · you`}>
-                  {session.name.slice(0, 1)}
-                </span>
-              </span>
-              <span className="presence-count" aria-hidden="true">
-                {people.length + 1} here
-              </span>
+        <div className="header-main">
+          <div className="document-heading">
+            <strong>{state.document?.title ?? "Opening document…"}</strong>
+            <div className="save-state">
+              <span
+                className={`status-dot ${state.pending ? "pending" : ""} ${state.paused ? "paused" : ""}`}
+              />
+              {!navigator.onLine && <WifiOff size={13} />} {state.status}
+              {state.document?.role === "viewer" && (
+                <span className="role-pill">View only</span>
+              )}
             </div>
-          )}
-          <button className="secondary" onClick={() => setModal("share")}>
-            <Share2 size={15} />
-            Share
-          </button>
-          <button className="primary small" onClick={() => setModal("agent")}>
-            <Bot size={15} />
-            Connect agent
-          </button>
-          <details
-            className="document-menu"
-            onBlur={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget))
-                e.currentTarget.open = false;
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.currentTarget.open = false;
-                e.currentTarget.querySelector("summary")?.focus();
-              }
-            }}
-          >
-            <summary
-              className="icon-button"
-              aria-label="Document actions"
-              title="Document actions"
-            >
-              <MoreHorizontal size={20} />
-            </summary>
-            <div
-              onClick={(e) => {
-                if ((e.target as HTMLElement).closest("button"))
-                  e.currentTarget.closest("details")!.open = false;
+          </div>
+          <div className="header-actions">
+            {people.length > 0 && (
+              <div
+                className="presence"
+                role="group"
+                aria-label={`${people.length + 1} connected ${people.length ? "sessions" : "session"}, including you`}
+                title={[
+                  `${session.name} · you`,
+                  ...people.map(presenceLabel),
+                ].join("\n")}
+              >
+                <span className="presence-avatars">
+                  {people.slice(0, 3).map((p) => (
+                    <span
+                      className={`avatar ${p.kind === "agent" ? "agent" : ""}`}
+                      key={p.session_id}
+                      title={presenceLabel(p)}
+                    >
+                      {p.kind === "agent" ? (
+                        <Bot size={14} />
+                      ) : (
+                        p.label.slice(0, 1)
+                      )}
+                    </span>
+                  ))}
+                  <span className="avatar self" title={`${session.name} · you`}>
+                    {session.name.slice(0, 1)}
+                  </span>
+                </span>
+                <span className="presence-count" aria-hidden="true">
+                  {people.length + 1} here
+                </span>
+              </div>
+            )}
+            <button className="secondary" onClick={() => setModal("share")}>
+              <Share2 size={15} />
+              Share
+            </button>
+            <button className="primary small" onClick={() => setModal("agent")}>
+              <Bot size={15} />
+              Connect agent
+            </button>
+            <details
+              className="document-menu"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget))
+                  e.currentTarget.open = false;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.currentTarget.open = false;
+                  e.currentTarget.querySelector("summary")?.focus();
+                }
               }}
             >
-              <button
-                disabled={readOnly}
-                onClick={() => {
-                  setTitle(state.document?.title ?? "");
-                  setRename(true);
+              <summary
+                className="icon-button"
+                aria-label="Document actions"
+                title="Document actions"
+              >
+                <MoreHorizontal size={20} />
+              </summary>
+              <div
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest("button"))
+                    e.currentTarget.closest("details")!.open = false;
                 }}
               >
-                Rename document
-              </button>
-              <button onClick={() => setSource(!source)}>
-                <Code2 size={15} />
-                {source ? "Back to editor" : "Markdown source"}
-              </button>
-              <button onClick={download}>
-                <Download size={15} />
-                Export Markdown
-              </button>
-              <button onClick={() => setInspector(!inspector)}>
-                <Activity size={15} />
-                {inspector ? "Hide sync details" : "Show live sync details"}
+                <button
+                  disabled={readOnly}
+                  onClick={() => {
+                    setTitle(state.document?.title ?? "");
+                    setRename(true);
+                  }}
+                >
+                  Rename document
+                </button>
+                <button onClick={() => setSource(!source)}>
+                  <Code2 size={15} />
+                  {source ? "Back to editor" : "Markdown source"}
+                </button>
+                <button onClick={download}>
+                  <Download size={15} />
+                  Export Markdown
+                </button>
+                <button onClick={() => setInspector(!inspector)}>
+                  <Activity size={15} />
+                  {inspector ? "Hide sync details" : "Show live sync details"}
+                </button>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div className="editor-tools">
+          {source ? (
+            <div className="source-tools">
+              <span>Markdown source</span>
+              <button
+                onClick={() => void navigator.clipboard.writeText(markdown)}
+              >
+                <Copy size={13} />
+                Copy
               </button>
             </div>
-          </details>
+          ) : (
+            <div className="format-toolbar">
+              {(
+                [
+                  { action: "bold", icon: Bold, label: "Bold · ⌘ B" },
+                  { action: "italic", icon: Italic, label: "Italic · ⌘ I" },
+                  { action: "heading", icon: Heading2, label: "Heading" },
+                  { action: "list", icon: List, label: "Bullet list" },
+                  { action: "undo", icon: Undo2, label: "Undo · ⌘ Z" },
+                  { action: "redo", icon: Redo2, label: "Redo · ⌘ ⇧ Z" },
+                ] as const
+              ).map(({ action, icon: Icon, label }) => (
+                <button
+                  key={action}
+                  title={label}
+                  aria-label={label}
+                  disabled={readOnly}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => format(editor, action as Format)}
+                >
+                  <Icon size={17} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
       {(state.error || message) && (
@@ -573,46 +612,10 @@ function Document({
       )}
       <div className="writing-area">
         <div className="paper">
-          {!source && (
-            <div className="format-toolbar">
-              {(
-                [
-                  { action: "bold", icon: Bold, label: "Bold · ⌘ B" },
-                  { action: "italic", icon: Italic, label: "Italic · ⌘ I" },
-                  { action: "heading", icon: Heading2, label: "Heading" },
-                  { action: "list", icon: List, label: "Bullet list" },
-                  { action: "undo", icon: Undo2, label: "Undo · ⌘ Z" },
-                  { action: "redo", icon: Redo2, label: "Redo · ⌘ ⇧ Z" },
-                ] as const
-              ).map(({ action, icon: Icon, label }) => (
-                <button
-                  key={action}
-                  title={label}
-                  aria-label={label}
-                  disabled={readOnly}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => format(editor, action as Format)}
-                >
-                  <Icon size={17} />
-                </button>
-              ))}
-            </div>
-          )}
           {state.ready ? (
             <>
               {source ? (
                 <div className="source-view">
-                  <div>
-                    <span>Markdown source</span>
-                    <button
-                      onClick={() =>
-                        void navigator.clipboard.writeText(markdown)
-                      }
-                    >
-                      <Copy size={13} />
-                      Copy
-                    </button>
-                  </div>
                   <pre>{markdown}</pre>
                 </div>
               ) : (
