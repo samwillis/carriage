@@ -7,6 +7,8 @@ import {
 import * as encoding from "lib0/encoding";
 import { cursorSelection, type Presence } from "../shared/contracts";
 
+const AGENT_EDIT_HIGHLIGHT_MS = 5000;
+
 // Remote awareness IDs live above Yjs's uint32 document client IDs. The
 // authenticated session row owns this ID; callers never supply awareness IDs.
 export function presenceId(sessionId: string) {
@@ -53,6 +55,8 @@ export function presenceActivity(row: Presence, now = Date.now()) {
 }
 export class PresenceAwareness {
   readonly awareness: Awareness;
+  private highlightTimer: ReturnType<typeof setTimeout> | undefined;
+  private remoteRows = new Map<string, Presence>();
   constructor(
     doc: Y.Doc,
     private sessionId: string,
@@ -72,11 +76,24 @@ export class PresenceAwareness {
     return result.success ? result.data : null;
   }
   sync(rows: Presence[], now: number) {
-    const remote = rows.filter(
-      (row) =>
-        row.session_id !== this.sessionId &&
-        new Date(row.expires_at).getTime() > now,
-    );
+    clearTimeout(this.highlightTimer);
+    this.highlightTimer = undefined;
+    const syncedAt = Date.now();
+    let nextExpiry = Infinity;
+    const remote = rows
+      .map((row) => {
+        const previous = this.remoteRows.get(row.session_id);
+        return previous &&
+          Number(previous.cursor_version) > Number(row.cursor_version)
+          ? previous
+          : row;
+      })
+      .filter(
+        (row) =>
+          row.session_id !== this.sessionId &&
+          new Date(row.expires_at).getTime() > now,
+      );
+    this.remoteRows = new Map(remote.map((row) => [row.session_id, row]));
     const current = new Set(remote.map((row) => presenceId(row.session_id)));
     removeAwarenessStates(
       this.awareness,
@@ -88,12 +105,24 @@ export class PresenceAwareness {
     const packet = encoding.createEncoder();
     encoding.writeVarUint(packet, remote.length);
     for (const row of remote) {
+      const highlightExpiry =
+        row.kind === "agent" && row.activity === "Edited" && row.updated_at
+          ? new Date(row.updated_at).getTime() + AGENT_EDIT_HIGHLIGHT_MS
+          : Infinity;
+      const expired = highlightExpiry <= now;
+      if (row.cursor && !expired)
+        nextExpiry = Math.min(nextExpiry, highlightExpiry);
       encoding.writeVarUint(packet, presenceId(row.session_id));
-      encoding.writeVarUint(packet, Number(row.cursor_version));
+      // Reserve the next clock for local highlight expiry. Older query rows
+      // cannot restore a faded highlight, and the next real edit still wins.
+      encoding.writeVarUint(
+        packet,
+        Number(row.cursor_version) * 2 + (expired ? 1 : 0),
+      );
       encoding.writeVarString(
         packet,
         JSON.stringify({
-          cursor: row.activity === "Idle" ? null : row.cursor,
+          cursor: row.activity === "Idle" || expired ? null : row.cursor,
           user: {
             name: `${row.label}${row.kind === "agent" ? " · agent" : row.user_id === this.userId ? " · another tab" : ""}`,
             color: sessionColor(row.session_id),
@@ -107,8 +136,14 @@ export class PresenceAwareness {
       encoding.toUint8Array(packet),
       "presence",
     );
+    if (Number.isFinite(nextExpiry))
+      this.highlightTimer = setTimeout(
+        () => this.sync(remote, now + Date.now() - syncedAt),
+        nextExpiry - now,
+      );
   }
   destroy() {
+    clearTimeout(this.highlightTimer);
     this.awareness.destroy();
   }
 }

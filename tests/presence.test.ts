@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as Y from "yjs";
 import {
   PresenceAwareness,
@@ -21,6 +21,76 @@ function row(cursor: Presence["cursor"], version = 1): Presence {
   };
 }
 describe("cursor presence", () => {
+  it("clears agent edit highlights after five seconds while keeping presence", () => {
+    vi.useFakeTimers();
+    const doc = new Y.Doc(),
+      bridge = new PresenceAwareness(doc, own, "user", "Writer");
+    try {
+      const cursor = {
+        anchor: { tname: "prosemirror" as const },
+        head: { tname: "prosemirror" as const },
+      };
+      const agent: Presence = {
+        ...row(cursor),
+        kind: "agent",
+        activity: "Edited",
+        updated_at: new Date(),
+      };
+      const remote = () => bridge.awareness.getStates().get(presenceId(other));
+      const before = Y.encodeStateAsUpdate(doc);
+      bridge.sync([agent], Date.now());
+      vi.advanceTimersByTime(4999);
+      expect(remote()?.cursor).toEqual(cursor);
+      vi.advanceTimersByTime(1);
+      expect(remote()?.cursor).toBeNull();
+      expect(remote()?.user.kind).toBe("agent");
+      expect(new Date(agent.expires_at).getTime() - Date.now()).toBe(40_000);
+      bridge.sync([agent], Date.now());
+      expect(remote()?.cursor).toBeNull();
+      expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    } finally {
+      bridge.destroy();
+      doc.destroy();
+      vi.useRealTimers();
+    }
+  });
+  it("restarts the highlight timeout for new edits and ignores delayed older rows", () => {
+    vi.useFakeTimers();
+    const doc = new Y.Doc(),
+      bridge = new PresenceAwareness(doc, own, "user", "Writer");
+    try {
+      const cursor = {
+        anchor: { tname: "prosemirror" as const },
+        head: { tname: "prosemirror" as const },
+      };
+      const agent: Presence = {
+        ...row(cursor),
+        kind: "agent",
+        activity: "Edited",
+        updated_at: new Date(),
+      };
+      const remote = () => bridge.awareness.getStates().get(presenceId(other));
+      bridge.sync([agent], Date.now());
+      vi.advanceTimersByTime(4000);
+      const next = { ...agent, cursor_version: 2, updated_at: new Date() };
+      bridge.sync([next], Date.now());
+      vi.advanceTimersByTime(1000);
+      expect(remote()?.cursor).toEqual(cursor);
+      bridge.sync([agent], Date.now());
+      expect(remote()?.cursor).toEqual(cursor);
+      vi.advanceTimersByTime(4000);
+      expect(remote()?.cursor).toBeNull();
+      bridge.sync(
+        [{ ...next, cursor_version: 3, updated_at: new Date() }],
+        Date.now(),
+      );
+      expect(remote()?.cursor).toEqual(cursor);
+    } finally {
+      bridge.destroy();
+      doc.destroy();
+      vi.useRealTimers();
+    }
+  });
   it("mirrors another session on the same account without changing document state", () => {
     const doc = new Y.Doc(),
       bridge = new PresenceAwareness(doc, own, "user", "Writer");

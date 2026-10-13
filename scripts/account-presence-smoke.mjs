@@ -129,6 +129,12 @@ try {
   console.log(
     "Live agent read/edit selections, activity and jump-to-selection: passed",
   );
+  await expect(page.locator(".ProseMirror-yjs-selection")).toHaveCount(0, {
+    timeout: 7000,
+  });
+  await expect(page.locator(".ProseMirror-yjs-cursor")).toHaveCount(0);
+  await expect(page.locator(".presence-avatars .avatar.agent")).toBeVisible();
+  console.log("Agent edit highlight clears while its avatar remains: passed");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator(".presence-panel summary").click();
