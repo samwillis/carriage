@@ -3,6 +3,7 @@ import { documents } from "./documents";
 import { pool } from "./db";
 import { type Identity } from "./identity";
 import { fail } from "./errors";
+import type { DocumentSummary } from "../shared/contracts";
 const secret = process.env.REALTIME_SECRET ?? process.env.NEON_REALTIME_SECRET;
 const realtime = secret
   ? createRealtime({
@@ -12,6 +13,18 @@ const realtime = secret
       ),
     })
   : null;
+export async function sealDocumentList(identity: Identity) {
+  if (!realtime)
+    fail(503, "realtime_unconfigured", "Realtime is not configured.");
+  if (identity.kind !== "person")
+    fail(403, "agent_route", "Only browser sessions can subscribe.");
+  // Sort in the browser: ORDER BY is not incremental in Realtime yet.
+  const query = rawSql<DocumentSummary>(
+    `SELECT d.id,d.title,d.updated_at,m.role FROM documents d JOIN document_members m ON m.document_id=d.id WHERE m.user_id=$1`,
+    [identity.userId],
+  );
+  return realtime.seal({ query });
+}
 export async function sealDocument(id: string, identity: Identity) {
   if (!realtime)
     fail(503, "realtime_unconfigured", "Realtime is not configured.");

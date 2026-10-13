@@ -28,15 +28,16 @@ import type { Editor } from "@milkdown/kit/core";
 import { api, post, type Session } from "./api";
 import { auth, currentSession } from "./auth";
 import { DocumentProvider } from "./provider";
+import { subscribeDocuments } from "./document-list";
 import { Participants } from "./participants";
 import { WritingEditor, format, type Format } from "./editor";
 import { renderDocument } from "../shared/codec";
-import type { DocumentInfo } from "../shared/contracts";
+import type { DocumentInfo, DocumentSummary } from "../shared/contracts";
 const welcome = `# Getting started\n\n- Open this document in another window to try live editing.\n- Use Share to invite someone.\n- Use Agent connections in the sidebar to let an agent read or edit your documents.\n\nStart writing here.\n`;
 export function App() {
   const [session, setSession] = useState<Session | null>(null),
     [loaded, setLoaded] = useState(false),
-    [documents, setDocuments] = useState<DocumentInfo[]>([]),
+    [documents, setDocuments] = useState<DocumentSummary[]>([]),
     [selected, setSelected] = useState<string | null>(
       new URLSearchParams(location.search).get("doc"),
     );
@@ -44,6 +45,7 @@ export function App() {
     [dialog, setDialog] = useState(false),
     [agentDialog, setAgentDialog] = useState(false),
     [error, setError] = useState(""),
+    [listError, setListError] = useState(""),
     [title, setTitle] = useState(""),
     [sidebar, setSidebar] = useState(false);
   useEffect(() => {
@@ -52,24 +54,18 @@ export function App() {
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, []);
-  const refresh = async (s = session) => {
-    if (!s) return;
-    const rows = await api<DocumentInfo[]>("/api/documents", s);
-    setDocuments(rows);
-    setSelected((current) => current ?? rows[0]?.id ?? null);
-  };
   useEffect(() => {
+    setDocuments([]);
+    setListError("");
     if (!session || location.pathname === "/oauth/connect") return;
-    const update = () => {
-      if (document.visibilityState === "visible")
-        void refresh(session).catch(() => {});
-    };
-    const interval = setInterval(update, 15_000);
-    window.addEventListener("focus", update);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("focus", update);
-    };
+    return subscribeDocuments(
+      session,
+      (rows) => {
+        setDocuments(rows);
+        setSelected((current) => current ?? rows[0]?.id ?? null);
+      },
+      setListError,
+    );
   }, [session]);
   useEffect(() => {
     if (session)
@@ -84,7 +80,6 @@ export function App() {
           setSelected(accepted.document_id);
           history.replaceState({}, "", `/?doc=${accepted.document_id}`);
         }
-        await refresh(session);
       })().catch((e) => setError(e.message));
   }, [session]);
   async function create() {
@@ -94,7 +89,6 @@ export function App() {
         session!,
         post({ title: title.trim() || "Untitled document", markdown: welcome }),
       );
-      await refresh();
       setSelected(d.id);
       history.replaceState({}, "", `/?doc=${d.id}`);
       setDialog(false);
@@ -181,10 +175,16 @@ export function App() {
         >
           <PanelLeft size={19} />
         </button>
-        {error && (
+        {(error || listError) && (
           <div className="app-error" role="alert">
-            {error}
-            <button className="icon-button" onClick={() => setError("")}>
+            {error || listError}
+            <button
+              className="icon-button"
+              onClick={() => {
+                setError("");
+                setListError("");
+              }}
+            >
               <X size={15} />
             </button>
           </div>
@@ -194,7 +194,6 @@ export function App() {
             key={`${session.userId}:${selected}`}
             id={selected}
             session={session}
-            onRename={() => void refresh()}
           />
         ) : (
           <div className="empty-state">
@@ -388,15 +387,7 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
     </div>
   );
 }
-function Document({
-  id,
-  session,
-  onRename,
-}: {
-  id: string;
-  session: Session;
-  onRename: () => void;
-}) {
+function Document({ id, session }: { id: string; session: Session }) {
   const [provider] = useState(() => new DocumentProvider(id, session));
   const state = useSyncExternalStore(provider.subscribe, provider.getSnapshot);
   const [editor, setEditor] = useState<Editor | null>(null),
@@ -440,7 +431,6 @@ function Document({
         body: JSON.stringify({ title }),
       });
       setRename(false);
-      onRename();
     } catch (e) {
       setMessage((e as Error).message);
     }

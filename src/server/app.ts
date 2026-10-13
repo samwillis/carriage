@@ -14,7 +14,7 @@ import {
 } from "./identity";
 import { AppError, fail } from "./errors";
 import { documentId, requestId, presenceInput } from "../shared/contracts";
-import { sealDocument } from "./live";
+import { sealDocument, sealDocumentList } from "./live";
 import {
   oauth,
   metadata,
@@ -194,6 +194,9 @@ app.use("/api/*", async (c, next) => {
 });
 app.get("/api/documents", async (c) =>
   c.json(await documents.list(c.get("identity"))),
+);
+app.get("/api/documents/live", async (c) =>
+  c.json(await sealDocumentList(c.get("identity"))),
 );
 app.post("/api/documents", async (c) => {
   const args = z

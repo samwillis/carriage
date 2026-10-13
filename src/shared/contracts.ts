@@ -109,6 +109,10 @@ export interface DocumentInfo {
   compaction_until: string | null;
   updated_at: string;
 }
+export type DocumentSummary = Pick<
+  DocumentInfo,
+  "id" | "title" | "role" | "updated_at"
+>;
 export interface Bootstrap {
   document: DocumentInfo;
   snapshot: string;

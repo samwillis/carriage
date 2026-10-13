@@ -6,6 +6,8 @@ Carriage is named after a typewriter carriage.
 
 Vercel hosts the React/Vite frontend. The API, OAuth provider, MCP endpoint, and compaction run on Neon Functions. The browser connects directly to Neon Auth and Realtime.
 
+The document sidebar uses an account-scoped Realtime query over document metadata and membership. New documents, titles and permissions update without polling. The browser sorts by modification time because `ORDER BY` queries are not yet incremental in Realtime. Its sealed capability renews every 30 seconds on the existing connection.
+
 [Open Carriage](https://carriage-neon.vercel.app/) · [MCP endpoint](https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build/mcp)
 
 ## Run locally
