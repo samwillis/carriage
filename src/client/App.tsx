@@ -32,7 +32,7 @@ import { Participants } from "./participants";
 import { WritingEditor, format, type Format } from "./editor";
 import { renderDocument } from "../shared/codec";
 import type { DocumentInfo } from "../shared/contracts";
-const welcome = `# Getting started\n\n- Open this document in another window to try live editing.\n- Use Share to invite someone.\n- Use Agent to let an agent read or edit this document.\n\nStart writing here.\n`;
+const welcome = `# Getting started\n\n- Open this document in another window to try live editing.\n- Use Share to invite someone.\n- Use Agent connections in the sidebar to let an agent read or edit your documents.\n\nStart writing here.\n`;
 export function App() {
   const [session, setSession] = useState<Session | null>(null),
     [loaded, setLoaded] = useState(false),
@@ -497,15 +497,6 @@ function Document({
           >
             <Share2 size={15} />
             <span>Share</span>
-          </button>
-          <button
-            className="header-link agent-control"
-            aria-label="Connect agent"
-            title="Connect agent"
-            onClick={() => setModal("agent")}
-          >
-            <Bot size={15} />
-            <span>Agent</span>
           </button>
           <HeaderMenu
             label="Document actions"
