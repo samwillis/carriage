@@ -14,7 +14,12 @@ import {
 } from "./identity";
 import { AppError, fail } from "./errors";
 import { documentId, requestId, presenceInput } from "../shared/contracts";
-import { sealDocument, sealDocumentList } from "./live";
+import {
+  sealDocument,
+  sealDocumentList,
+  sealSharing,
+  sealAgentConnections,
+} from "./live";
 import {
   oauth,
   metadata,
@@ -243,6 +248,11 @@ app.get("/api/documents/:id/live", async (c) =>
     await sealDocument(documentId.parse(c.req.param("id")), c.get("identity")),
   ),
 );
+app.get("/api/documents/:id/sharing/live", async (c) =>
+  c.json(
+    await sealSharing(documentId.parse(c.req.param("id")), c.get("identity")),
+  ),
+);
 app.get("/api/documents/:id/read", async (c) =>
   c.json(
     await documents.read(c.get("identity"), {
@@ -303,6 +313,9 @@ app.post("/api/documents/:id/presence", async (c) => {
   );
   return c.json({ ok: true, server_time: Date.now() });
 });
+app.get("/api/grants/live", async (c) =>
+  c.json(await sealAgentConnections(c.get("identity"))),
+);
 app.get("/api/grants", async (c) => {
   const { rows } = await pool.query(
     `SELECT id,label,scopes,expires_at,revoked_at,oauth_client_id

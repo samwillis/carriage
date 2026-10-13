@@ -8,6 +8,10 @@ Vercel hosts the React/Vite frontend. The API, OAuth provider, MCP endpoint, and
 
 The document sidebar uses an account-scoped Realtime query over document metadata and membership. New documents, titles and permissions update without polling. The browser sorts by modification time because `ORDER BY` queries are not yet incremental in Realtime. Its sealed capability renews every 30 seconds on the existing connection.
 
+Share subscribes to members and invitation metadata while open; Agent connections subscribes to account connection metadata. Invitation queries require a current owner membership, and connection queries include only the signed-in account. Tokens and token hashes are excluded. Local timers use server time to remove expired invitations and connections; passing time does not emit a database change. Closing a dialog stops its queries and timers.
+
+Migration 006 creates a connection metadata table maintained by a database trigger in the grant transaction. This avoids snapshot fallback in the preview query engine caused by the legacy column dropped from `agent_grants`; existing credentials stay in place. The metadata table contains no tokens or hashes.
+
 [Open Carriage](https://carriage-neon.vercel.app/) · [MCP endpoint](https://br-frosty-poetry-w25lx1wr-margin.compute.c-1.us-east-2.aws.neon.build/mcp)
 
 ## Run locally

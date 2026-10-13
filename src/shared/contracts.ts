@@ -113,6 +113,25 @@ export type DocumentSummary = Pick<
   DocumentInfo,
   "id" | "title" | "role" | "updated_at"
 >;
+export interface DocumentMember {
+  user_id: string;
+  role: "owner" | "editor" | "viewer";
+}
+export interface ExpiringEntry {
+  expires_at: string | Date;
+  revoked_at?: string | Date | null;
+}
+export interface DocumentInvite extends ExpiringEntry {
+  id: string;
+  role: "editor" | "viewer";
+}
+export interface AgentConnection extends ExpiringEntry {
+  id: string;
+  label: string;
+  scopes: string[];
+  oauth_client_id: string | null;
+  created_at: string | Date;
+}
 export interface Bootstrap {
   document: DocumentInfo;
   snapshot: string;

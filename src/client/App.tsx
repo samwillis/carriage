@@ -29,10 +29,18 @@ import { api, post, type Session } from "./api";
 import { auth, currentSession } from "./auth";
 import { DocumentProvider } from "./provider";
 import { subscribeDocuments } from "./document-list";
+import { subscribeLiveQueries } from "./live-queries";
+import { isActive, useExpiryClock } from "./expiry";
 import { Participants } from "./participants";
 import { WritingEditor, format, type Format } from "./editor";
 import { renderDocument } from "../shared/codec";
-import type { DocumentInfo, DocumentSummary } from "../shared/contracts";
+import type {
+  DocumentInfo,
+  DocumentSummary,
+  DocumentMember,
+  DocumentInvite,
+  AgentConnection,
+} from "../shared/contracts";
 const welcome = `# Getting started\n\n- Open this document in another window to try live editing.\n- Use Share to invite someone.\n- Use Agent connections in the sidebar to let an agent read or edit your documents.\n\nStart writing here.\n`;
 export function App() {
   const [session, setSession] = useState<Session | null>(null),
@@ -662,7 +670,7 @@ function Document({ id, session }: { id: string; session: Session }) {
         <ShareDialog
           id={id}
           session={session}
-          role={state.document?.role ?? "viewer"}
+          role={state.paused ? "viewer" : (state.document?.role ?? "viewer")}
           onAgent={() => setModal("agent")}
           onClose={() => setModal(null)}
         />
@@ -792,19 +800,53 @@ function ShareDialog({
   onAgent: () => void;
   onClose: () => void;
 }) {
-  const [members, setMembers] = useState<any[]>([]),
-    [invites, setInvites] = useState<any[]>([]),
+  const [members, setMembers] = useState<DocumentMember[]>([]),
+    [invites, setInvites] = useState<DocumentInvite[]>([]),
     [permission, setPermission] = useState("editor"),
-    [url, setUrl] = useState(""),
-    [error, setError] = useState("");
-  const refresh = async () => {
-    setMembers(await api(`/api/documents/${id}/members`, session));
-    if (role === "owner")
-      setInvites(await api(`/api/documents/${id}/invites`, session));
-  };
+    [invitation, setInvitation] = useState<
+      (DocumentInvite & { url: string }) | null
+    >(null),
+    [error, setError] = useState(""),
+    [liveError, setLiveError] = useState(""),
+    [serverOffset, setServerOffset] = useState(0);
+  const now = useExpiryClock(invites, invitation, serverOffset);
   useEffect(() => {
-    void refresh().catch((e) => setError(e.message));
-  }, []);
+    let active = true;
+    const close = subscribeLiveQueries<{
+      members: DocumentMember;
+      invites: DocumentInvite;
+    }>(
+      session,
+      async () => {
+        const sealed = await api(`/api/documents/${id}/sharing/live`, session);
+        if (active) setServerOffset(sealed.server_time - Date.now());
+        return sealed;
+      },
+      {
+        members: (rows) =>
+          setMembers(
+            rows.sort(
+              (a, b) =>
+                Number(b.role === "owner") - Number(a.role === "owner") ||
+                a.user_id.localeCompare(b.user_id),
+            ),
+          ),
+        invites: (rows) =>
+          setInvites(rows.sort((a, b) => a.id.localeCompare(b.id))),
+      },
+      setLiveError,
+    );
+    return () => {
+      active = false;
+      close();
+    };
+  }, [id, session]);
+  useEffect(() => {
+    if (!invitation) return;
+    const current =
+      invites.find((entry) => entry.id === invitation.id) ?? invitation;
+    if (role !== "owner" || !isActive(current, now)) setInvitation(null);
+  }, [invitation, invites, now, role]);
   return (
     <Modal
       title="Share document"
@@ -832,8 +874,7 @@ function ShareDialog({
                 post({ role: permission }),
               )
                 .then((d) => {
-                  setUrl(d.url);
-                  void refresh();
+                  setInvitation(d);
                 })
                 .catch((e) => setError(e.message))
             }
@@ -841,7 +882,7 @@ function ShareDialog({
             <Share2 size={15} />
             Create invitation link
           </button>
-          {url && <CopyBox value={url} />}
+          {invitation && <CopyBox value={invitation.url} />}
           <small className="hint">Invitation links expire after 7 days.</small>
         </>
       )}
@@ -862,9 +903,7 @@ function ShareDialog({
                     `/api/documents/${id}/members/${encodeURIComponent(m.user_id)}`,
                     session,
                     { method: "DELETE" },
-                  )
-                    .then(refresh)
-                    .catch((e) => setError(e.message))
+                  ).catch((e) => setError(e.message))
                 }
               >
                 Remove
@@ -875,7 +914,7 @@ function ShareDialog({
       </div>
       {role === "owner" &&
         invites
-          .filter((i) => !i.revoked_at)
+          .filter((i) => isActive(i, now))
           .map((i) => (
             <div className="grant-row" key={i.id}>
               <span>
@@ -888,7 +927,7 @@ function ShareDialog({
                 onClick={() =>
                   void api(`/api/documents/${id}/invites/${i.id}`, session, {
                     method: "DELETE",
-                  }).then(refresh)
+                  }).catch((e) => setError(e.message))
                 }
               >
                 Revoke
@@ -916,9 +955,9 @@ function ShareDialog({
           label="Copy document agent prompt"
         />
       </div>
-      {error && (
+      {(error || liveError) && (
         <p className="error" role="alert">
-          {error}
+          {error || liveError}
         </p>
       )}
     </Modal>
@@ -1063,7 +1102,7 @@ function LocalAgentSetup({
         </>
       )}
       <p className="hint">
-        This configuration contains your document token. Keep it private and out
+        This configuration contains your access token. Keep it private and out
         of Git. It expires in 7 days; create a new connection to replace it.
       </p>
     </div>
@@ -1081,18 +1120,54 @@ function AgentDialog({
     ),
     [otherMethod, setOtherMethod] = useState("oauth"),
     [config, setConfig] = useState<any>(null),
-    [grants, setGrants] = useState<any[]>([]),
+    [grants, setGrants] = useState<AgentConnection[]>([]),
     [label, setLabel] = useState("My agent"),
     [scope, setScope] = useState("edit"),
     [connection, setConnection] = useState<any>(null),
-    [error, setError] = useState("");
-  const refresh = async () => setGrants(await api("/api/grants", session));
+    [error, setError] = useState(""),
+    [liveError, setLiveError] = useState(""),
+    [serverOffset, setServerOffset] = useState(0);
+  const now = useExpiryClock(grants, connection, serverOffset);
+  const activeGrants = grants.filter((g) => isActive(g, now));
   useEffect(() => {
+    let active = true;
     void api("/api/config")
-      .then(setConfig)
-      .catch((e) => setError(e.message));
-    void refresh().catch((e) => setError(e.message));
-  }, []);
+      .then((config) => {
+        if (active) setConfig(config);
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      });
+    const close = subscribeLiveQueries<{ grants: AgentConnection }>(
+      session,
+      async () => {
+        const sealed = await api("/api/grants/live", session);
+        if (active) setServerOffset(sealed.server_time - Date.now());
+        return sealed;
+      },
+      {
+        grants: (rows) =>
+          setGrants(
+            rows.sort(
+              (a, b) =>
+                new Date(b.created_at).getTime() -
+                  new Date(a.created_at).getTime() || a.id.localeCompare(b.id),
+            ),
+          ),
+      },
+      setLiveError,
+    );
+    return () => {
+      active = false;
+      close();
+    };
+  }, [session]);
+  useEffect(() => {
+    if (!connection) return;
+    const current =
+      grants.find((entry) => entry.id === connection.id) ?? connection;
+    if (!isActive(current, now)) setConnection(null);
+  }, [connection, grants, now]);
   const useToken =
     client !== "chatgpt" &&
     client !== "claude" &&
@@ -1204,7 +1279,6 @@ function AgentDialog({
               )
                 .then((d) => {
                   setConnection(d);
-                  void refresh();
                 })
                 .catch((e) => setError(e.message))
             }
@@ -1245,35 +1319,35 @@ function AgentDialog({
           These connections belong to your account. Revoking one stops its
           access across all documents.
         </p>
-        {grants
-          .filter((g) => !g.revoked_at)
-          .map((g) => (
-            <div className="grant-row" key={g.id}>
-              <span>
-                {g.label}
-                <small>
-                  All your documents · {g.scopes.join(" + ")} · expires{" "}
-                  {new Date(g.expires_at).toLocaleDateString()}
-                </small>
-              </span>
-              <button
-                onClick={() =>
-                  void api(`/api/grants/${g.id}`, session, { method: "DELETE" })
-                    .then(refresh)
-                    .catch((e) => setError(e.message))
-                }
-              >
-                Revoke
-              </button>
-            </div>
-          ))}
-        {!grants.filter((g) => !g.revoked_at).length && (
-          <p className="hint">No agents connected yet.</p>
+        {activeGrants.map((g) => (
+          <div className="grant-row" key={g.id}>
+            <span>
+              {g.label}
+              <small>
+                All your documents · {g.scopes.join(" + ")} · expires{" "}
+                {new Date(g.expires_at).toLocaleDateString()}
+              </small>
+            </span>
+            <button
+              onClick={() =>
+                void api(`/api/grants/${g.id}`, session, { method: "DELETE" })
+                  .then(() => {
+                    if (connection?.id === g.id) setConnection(null);
+                  })
+                  .catch((e) => setError(e.message))
+              }
+            >
+              Revoke
+            </button>
+          </div>
+        ))}
+        {!activeGrants.length && (
+          <p className="hint">No active agent connections.</p>
         )}
       </div>
-      {error && (
+      {(error || liveError) && (
         <p role="alert" className="error">
-          {error}
+          {error || liveError}
         </p>
       )}
     </Modal>

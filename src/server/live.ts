@@ -3,7 +3,12 @@ import { documents } from "./documents";
 import { pool } from "./db";
 import { type Identity } from "./identity";
 import { fail } from "./errors";
-import type { DocumentSummary } from "../shared/contracts";
+import type {
+  DocumentSummary,
+  DocumentMember,
+  DocumentInvite,
+  AgentConnection,
+} from "../shared/contracts";
 const secret = process.env.REALTIME_SECRET ?? process.env.NEON_REALTIME_SECRET;
 const realtime = secret
   ? createRealtime({
@@ -13,11 +18,15 @@ const realtime = secret
       ),
     })
   : null;
-export async function sealDocumentList(identity: Identity) {
+function browserRealtime(identity: Identity) {
   if (!realtime)
     fail(503, "realtime_unconfigured", "Realtime is not configured.");
   if (identity.kind !== "person")
     fail(403, "agent_route", "Only browser sessions can subscribe.");
+  return realtime;
+}
+export async function sealDocumentList(identity: Identity) {
+  const realtime = browserRealtime(identity);
   // Sort in the browser: ORDER BY is not incremental in Realtime yet.
   const query = rawSql<DocumentSummary>(
     `SELECT d.id,d.title,d.updated_at,m.role FROM documents d JOIN document_members m ON m.document_id=d.id WHERE m.user_id=$1`,
@@ -25,11 +34,37 @@ export async function sealDocumentList(identity: Identity) {
   );
   return realtime.seal({ query });
 }
+export async function sealSharing(id: string, identity: Identity) {
+  const realtime = browserRealtime(identity);
+  await documents.authorize(pool, id, identity);
+  const parameters = [id, identity.userId];
+  const members = rawSql<DocumentMember>(
+    `SELECT t.user_id,t.role FROM document_members t JOIN document_members m ON m.document_id=t.document_id WHERE t.document_id=$1 AND m.user_id=$2`,
+    parameters,
+  );
+  const invites = rawSql<DocumentInvite>(
+    `SELECT t.id,t.role,t.expires_at,t.revoked_at FROM document_invites t JOIN document_members m ON m.document_id=t.document_id WHERE t.document_id=$1 AND m.user_id=$2 AND m.role='owner'`,
+    parameters,
+  );
+  const [memberQuery, inviteQuery] = await Promise.all(
+    [members, invites].map((query) => realtime.seal({ query })),
+  );
+  return {
+    members: memberQuery,
+    invites: inviteQuery,
+    server_time: Date.now(),
+  };
+}
+export async function sealAgentConnections(identity: Identity) {
+  const realtime = browserRealtime(identity);
+  const query = rawSql<AgentConnection>(
+    `SELECT id,label,scopes,expires_at,revoked_at,oauth_client_id,created_at FROM agent_connection_metadata WHERE user_id=$1`,
+    [identity.userId],
+  );
+  return { grants: await realtime.seal({ query }), server_time: Date.now() };
+}
 export async function sealDocument(id: string, identity: Identity) {
-  if (!realtime)
-    fail(503, "realtime_unconfigured", "Realtime is not configured.");
-  if (identity.kind !== "person")
-    fail(403, "agent_route", "Only browser sessions can subscribe.");
+  const realtime = browserRealtime(identity);
   await documents.authorize(pool, id, identity);
   const parameters = [id, identity.userId];
   const predicate = "m.document_id=t.document_id AND m.user_id=$2";

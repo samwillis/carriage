@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { subscribeDocuments } from "../src/client/document-list";
 import { ApiError } from "../src/client/api";
+import { subscribeLiveQueries } from "../src/client/live-queries";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), createClient: vi.fn() }));
 vi.mock("../src/client/api", async (original) => ({
@@ -144,5 +145,49 @@ describe("live document sidebar", () => {
     expect(mocks.api).toHaveBeenCalledTimes(2);
     expect(errors).toHaveBeenLastCalledWith("Sign in again.");
     expect(mocks.createClient).not.toHaveBeenCalled();
+  });
+  it("shares a connection for multiple dialog queries and renews them together", async () => {
+    const members = { receive: (_: any) => {}, renew: vi.fn(async () => {}) };
+    const invites = { receive: (_: any) => {}, renew: vi.fn(async () => {}) };
+    const close = vi.fn();
+    mocks.createClient.mockReturnValue({
+      close,
+      subscribe: (sealed: string) => {
+        const sub = sealed === "members" ? members : invites;
+        return {
+          renew: sub.renew,
+          onChange: (fn: any) => {
+            sub.receive = fn;
+          },
+        };
+      },
+    });
+    const onMembers = vi.fn(),
+      onInvites = vi.fn();
+    const load = vi.fn(
+      async () => ({ members: "members", invites: "invites" }) as any,
+    );
+    stop = subscribeLiveQueries(
+      session,
+      load,
+      { members: onMembers, invites: onInvites },
+      errors,
+    );
+    await settle();
+    members.receive({ status: "live", data: [{ user_id: "writer" }] });
+    invites.receive({ status: "live", data: [] });
+    expect(onMembers).toHaveBeenLastCalledWith([{ user_id: "writer" }]);
+    expect(onInvites).toHaveBeenLastCalledWith([]);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(members.renew).toHaveBeenCalledWith("members");
+    expect(invites.renew).toHaveBeenCalledWith("invites");
+    expect(mocks.createClient).toHaveBeenCalledOnce();
+    load.mockRejectedValue(new ApiError(403, "access_lost", "Access removed."));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(onMembers).toHaveBeenLastCalledWith([]);
+    expect(onInvites).toHaveBeenLastCalledWith([]);
+    expect(close).toHaveBeenCalledOnce();
+    members.receive({ status: "live", data: [{ user_id: "writer" }] });
+    expect(onMembers).toHaveBeenLastCalledWith([]);
   });
 });
