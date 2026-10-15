@@ -313,7 +313,7 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
         </div>
         <a
           className="story-footer"
-          href="https://neon-next-git-thruflo-realtime-3-integration-neondatabase.vercel.app/docs/realtime/"
+          href="https://neon.com/docs/realtime/overview"
           target="_blank"
           rel="noreferrer"
         >
@@ -659,7 +659,7 @@ function Document({ id, session }: { id: string; session: Session }) {
       </div>
       <footer className="workspace-footer">
         <a
-          href="https://neon-next-git-thruflo-realtime-3-integration-neondatabase.vercel.app/docs/realtime/"
+          href="https://neon.com/docs/realtime/overview"
           target="_blank"
           rel="noreferrer"
         >
