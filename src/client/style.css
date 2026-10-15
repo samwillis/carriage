@@ -716,12 +716,14 @@ p {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 20px;
   padding: 0 34px;
 
   color: #a0ae92;
   font-size: 9px;
 }
-.workspace-footer > a {
+.workspace-footer > a,
+.story-footer > a {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1091,7 +1093,8 @@ p {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 20px;
+  flex-wrap: wrap;
 }
 .login-form {
   display: flex;
@@ -1315,8 +1318,7 @@ p {
     line-height: 1.05;
     margin: 15px 0 22px;
   }
-  .login-story p,
-  .story-footer {
+  .login-story p {
     display: none;
   }
   .login-story > .wordmark {

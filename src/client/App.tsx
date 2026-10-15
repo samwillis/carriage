@@ -311,14 +311,22 @@ function Login({ onSession }: { onSession: (s: Session) => void }) {
             and the agents that help you get there.
           </p>
         </div>
-        <a
-          className="story-footer"
-          href="https://neon.com/docs/realtime/overview"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Neon Realtime demo <ArrowUpRight size={14} />
-        </a>
+        <footer className="story-footer">
+          <a
+            href="https://github.com/samwillis/carriage"
+            target="_blank"
+            rel="noreferrer"
+          >
+            How we built it <ArrowUpRight size={14} />
+          </a>
+          <a
+            href="https://neon.com/docs/realtime/overview"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Neon Realtime demo <ArrowUpRight size={14} />
+          </a>
+        </footer>
       </div>
       <div className="login-form">
         <div className="login-box">
@@ -658,6 +666,13 @@ function Document({ id, session }: { id: string; session: Session }) {
         )}
       </div>
       <footer className="workspace-footer">
+        <a
+          href="https://github.com/samwillis/carriage"
+          target="_blank"
+          rel="noreferrer"
+        >
+          How we built it <ArrowUpRight size={12} />
+        </a>
         <a
           href="https://neon.com/docs/realtime/overview"
           target="_blank"
